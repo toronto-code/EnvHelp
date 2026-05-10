@@ -2,24 +2,72 @@
   "version": 1,
   "providers": [
     {
+      "id": "stripe",
+      "name": "Stripe",
+      "keyUrl": "https://dashboard.stripe.com/apikeys",
+      "docsUrl": "https://docs.stripe.com/keys",
+      "sourceUrl": "https://docs.stripe.com/keys",
+      "sourceKind": "official-docs",
+      "env": ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET"],
+      "envSafety": {
+        "STRIPE_SECRET_KEY": { "clientSafe": false },
+        "STRIPE_PUBLISHABLE_KEY": { "clientSafe": true },
+        "STRIPE_WEBHOOK_SECRET": { "clientSafe": false }
+      },
+      "envPatterns": ["^STRIPE_"],
+      "packages": ["stripe", "@stripe/stripe-js"],
+      "validation": {
+        "env": ["STRIPE_SECRET_KEY"],
+        "type": "http",
+        "method": "GET",
+        "url": "https://api.stripe.com/v1/balance",
+        "headers": { "Authorization": "Bearer {value}" },
+        "okStatus": [200],
+        "success": "Stripe accepted the key."
+      },
+      "clientSafe": false,
+      "notes": ["Publishable keys can be client-side. Secret and webhook keys must stay server-side."]
+    },
+    {
+      "id": "supabase",
+      "name": "Supabase",
+      "keyUrl": "https://supabase.com/docs/guides/api/api-keys",
+      "docsUrl": "https://supabase.com/docs/guides/api/api-keys",
+      "sourceUrl": "https://supabase.com/docs/guides/api/api-keys",
+      "sourceKind": "official-docs",
+      "env": ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_PUBLISHABLE_KEY", "SUPABASE_SECRET_KEY", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"],
+      "envSafety": {
+        "SUPABASE_URL": { "clientSafe": true, "validation": { "type": "url", "protocol": "https:", "success": "Supabase URL looks valid." } },
+        "SUPABASE_ANON_KEY": { "clientSafe": true },
+        "SUPABASE_SERVICE_ROLE_KEY": { "clientSafe": false },
+        "SUPABASE_PUBLISHABLE_KEY": { "clientSafe": true },
+        "SUPABASE_SECRET_KEY": { "clientSafe": false },
+        "NEXT_PUBLIC_SUPABASE_URL": { "clientSafe": true },
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY": { "clientSafe": true }
+      },
+      "envPatterns": ["^SUPABASE_", "^NEXT_PUBLIC_SUPABASE_"],
+      "packages": ["@supabase/supabase-js"],
+      "clientSafe": true,
+      "notes": ["Publishable/anon keys can be public. Secret/service_role keys must stay server-side."]
+    },
+    {
       "id": "openai",
       "name": "OpenAI",
       "aliases": ["gpt", "chatgpt"],
       "keyUrl": "https://platform.openai.com/api-keys",
-      "docsUrl": "https://platform.openai.com/docs",
+      "docsUrl": "https://platform.openai.com/docs/quickstart",
+      "sourceUrl": "https://platform.openai.com/docs/quickstart",
+      "sourceKind": "official-docs",
       "env": ["OPENAI_API_KEY"],
-      "envSafety": {
-        "OPENAI_API_KEY": { "clientSafe": false }
-      },
+      "envSafety": { "OPENAI_API_KEY": { "clientSafe": false } },
       "envPatterns": ["^OPENAI_"],
       "packages": ["openai"],
       "validation": {
+        "env": ["OPENAI_API_KEY"],
         "type": "http",
         "method": "GET",
         "url": "https://api.openai.com/v1/models",
-        "headers": {
-          "Authorization": "Bearer {value}"
-        },
+        "headers": { "Authorization": "Bearer {value}" },
         "okStatus": [200],
         "success": "OpenAI accepted the key."
       },
@@ -32,13 +80,14 @@
       "aliases": ["claude"],
       "keyUrl": "https://console.anthropic.com/settings/keys",
       "docsUrl": "https://docs.anthropic.com/",
+      "sourceUrl": "https://docs.anthropic.com/",
+      "sourceKind": "official-docs",
       "env": ["ANTHROPIC_API_KEY"],
-      "envSafety": {
-        "ANTHROPIC_API_KEY": { "clientSafe": false }
-      },
+      "envSafety": { "ANTHROPIC_API_KEY": { "clientSafe": false } },
       "envPatterns": ["^ANTHROPIC_"],
       "packages": ["@anthropic-ai/sdk"],
       "validation": {
+        "env": ["ANTHROPIC_API_KEY"],
         "type": "http",
         "method": "GET",
         "url": "https://api.anthropic.com/v1/models",
@@ -53,99 +102,93 @@
       "notes": ["Keep server-side. Do not expose in frontend code."]
     },
     {
-      "id": "stripe",
-      "name": "Stripe",
-      "keyUrl": "https://dashboard.stripe.com/apikeys",
-      "docsUrl": "https://docs.stripe.com/keys",
-      "env": ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET"],
-      "envSafety": {
-        "STRIPE_SECRET_KEY": { "clientSafe": false },
-        "STRIPE_PUBLISHABLE_KEY": { "clientSafe": true },
-        "STRIPE_WEBHOOK_SECRET": { "clientSafe": false }
-      },
-      "envPatterns": ["^STRIPE_"],
-      "packages": ["stripe", "@stripe/stripe-js"],
+      "id": "mistral",
+      "name": "Mistral AI",
+      "keyUrl": "https://docs.mistral.ai/admin/security-access/api-keys",
+      "docsUrl": "https://docs.mistral.ai/admin/security-access/api-keys",
+      "sourceUrl": "https://docs.mistral.ai/admin/security-access/api-keys",
+      "sourceKind": "official-docs",
+      "env": ["MISTRAL_API_KEY"],
+      "envSafety": { "MISTRAL_API_KEY": { "clientSafe": false } },
+      "envPatterns": ["^MISTRAL_"],
+      "packages": ["@mistralai/mistralai"],
+      "clientSafe": false,
+      "notes": ["API keys are workspace-scoped and shown only once after creation."]
+    },
+    {
+      "id": "cohere",
+      "name": "Cohere",
+      "keyUrl": "https://docs.cohere.com/v1/docs/going-to-production",
+      "docsUrl": "https://docs.cohere.com/v1/docs/going-to-production",
+      "sourceUrl": "https://docs.cohere.com/v1/docs/going-to-production",
+      "sourceKind": "official-docs",
+      "env": ["COHERE_API_KEY"],
+      "envSafety": { "COHERE_API_KEY": { "clientSafe": false } },
+      "envPatterns": ["^COHERE_"],
+      "packages": ["cohere-ai"],
       "validation": {
+        "env": ["COHERE_API_KEY"],
         "type": "http",
-        "method": "GET",
-        "url": "https://api.stripe.com/v1/balance",
-        "headers": {
-          "Authorization": "Bearer {value}"
-        },
+        "method": "POST",
+        "url": "https://api.cohere.com/v1/check-api-key",
+        "headers": { "Authorization": "Bearer {value}" },
         "okStatus": [200],
-        "success": "Stripe accepted the key."
+        "success": "Cohere accepted the key."
       },
       "clientSafe": false,
-      "notes": ["Publishable keys can be client-side. Secret and webhook keys must stay server-side."]
+      "notes": ["Cohere has trial and production keys with different limits."]
     },
     {
-      "id": "supabase",
-      "name": "Supabase",
-      "keyUrl": "https://supabase.com/dashboard/project/_/settings/api",
-      "docsUrl": "https://supabase.com/docs",
-      "env": ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"],
-      "envSafety": {
-        "SUPABASE_URL": { "clientSafe": true, "validation": { "type": "url", "protocol": "https:", "success": "Supabase URL looks valid." } },
-        "SUPABASE_ANON_KEY": { "clientSafe": true },
-        "SUPABASE_SERVICE_ROLE_KEY": { "clientSafe": false },
-        "NEXT_PUBLIC_SUPABASE_URL": { "clientSafe": true },
-        "NEXT_PUBLIC_SUPABASE_ANON_KEY": { "clientSafe": true }
-      },
-      "envPatterns": ["^SUPABASE_", "^NEXT_PUBLIC_SUPABASE_"],
-      "packages": ["@supabase/supabase-js"],
-      "clientSafe": true,
-      "notes": ["Anon keys may be public. Service role keys must stay server-side."]
-    },
-    {
-      "id": "firebase",
-      "name": "Firebase",
-      "keyUrl": "https://console.firebase.google.com/",
-      "docsUrl": "https://firebase.google.com/docs/projects/api-keys",
-      "env": ["FIREBASE_API_KEY", "VITE_FIREBASE_API_KEY", "NEXT_PUBLIC_FIREBASE_API_KEY"],
-      "envSafety": {
-        "FIREBASE_API_KEY": { "clientSafe": true },
-        "VITE_FIREBASE_API_KEY": { "clientSafe": true },
-        "NEXT_PUBLIC_FIREBASE_API_KEY": { "clientSafe": true }
-      },
-      "envPatterns": ["FIREBASE_"],
-      "packages": ["firebase", "firebase-admin"],
-      "clientSafe": true,
-      "notes": ["Firebase web API keys identify a project; still use security rules correctly."]
-    },
-    {
-      "id": "clerk",
-      "name": "Clerk",
-      "keyUrl": "https://dashboard.clerk.com/last-active?path=api-keys",
-      "docsUrl": "https://clerk.com/docs/deployments/clerk-environment-variables",
-      "env": ["CLERK_SECRET_KEY", "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "VITE_CLERK_PUBLISHABLE_KEY"],
-      "envSafety": {
-        "CLERK_SECRET_KEY": { "clientSafe": false },
-        "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY": { "clientSafe": true },
-        "VITE_CLERK_PUBLISHABLE_KEY": { "clientSafe": true }
-      },
-      "envPatterns": ["CLERK_"],
-      "packages": ["@clerk/nextjs", "@clerk/clerk-react"],
+      "id": "together-ai",
+      "name": "Together AI",
+      "aliases": ["together"],
+      "keyUrl": "https://docs.together.ai/docs/multiple-api-keys",
+      "docsUrl": "https://docs.together.ai/docs/multiple-api-keys",
+      "sourceUrl": "https://docs.together.ai/docs/multiple-api-keys",
+      "sourceKind": "official-docs",
+      "env": ["TOGETHER_API_KEY"],
+      "envSafety": { "TOGETHER_API_KEY": { "clientSafe": false } },
+      "envPatterns": ["^TOGETHER_"],
+      "packages": ["@together-ai/sdk"],
       "clientSafe": false,
-      "notes": ["Publishable keys are client-side. CLERK_SECRET_KEY must stay server-side."]
+      "notes": ["Project-scoped API keys are preferred."]
+    },
+    {
+      "id": "huggingface",
+      "name": "Hugging Face",
+      "aliases": ["hf", "hugging face"],
+      "keyUrl": "https://huggingface.co/docs/hub/en/security-tokens",
+      "docsUrl": "https://huggingface.co/docs/hub/en/security-tokens",
+      "sourceUrl": "https://huggingface.co/docs/hub/en/security-tokens",
+      "sourceKind": "official-docs",
+      "env": ["HUGGINGFACE_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HF_TOKEN"],
+      "envSafety": {
+        "HUGGINGFACE_TOKEN": { "clientSafe": false },
+        "HUGGING_FACE_HUB_TOKEN": { "clientSafe": false },
+        "HF_TOKEN": { "clientSafe": false }
+      },
+      "envPatterns": ["^HUGGINGFACE_", "^HUGGING_FACE_", "^HF_TOKEN$"],
+      "packages": ["@huggingface/inference", "huggingface"],
+      "clientSafe": false,
+      "notes": ["Fine-grained tokens are recommended for production usage."]
     },
     {
       "id": "resend",
       "name": "Resend",
-      "keyUrl": "https://resend.com/api-keys",
-      "docsUrl": "https://resend.com/docs",
+      "keyUrl": "https://resend.com/docs/dashboard/api-keys/introduction",
+      "docsUrl": "https://resend.com/docs/dashboard/api-keys/introduction",
+      "sourceUrl": "https://resend.com/docs/dashboard/api-keys/introduction",
+      "sourceKind": "official-docs",
       "env": ["RESEND_API_KEY"],
-      "envSafety": {
-        "RESEND_API_KEY": { "clientSafe": false }
-      },
+      "envSafety": { "RESEND_API_KEY": { "clientSafe": false } },
       "envPatterns": ["^RESEND_"],
       "packages": ["resend"],
       "validation": {
+        "env": ["RESEND_API_KEY"],
         "type": "http",
         "method": "GET",
         "url": "https://api.resend.com/domains",
-        "headers": {
-          "Authorization": "Bearer {value}"
-        },
+        "headers": { "Authorization": "Bearer {value}" },
         "okStatus": [200],
         "success": "Resend accepted the key."
       },
@@ -153,10 +196,80 @@
       "notes": ["Keep server-side."]
     },
     {
+      "id": "sendgrid",
+      "name": "Twilio SendGrid",
+      "aliases": ["sendgrid"],
+      "keyUrl": "https://www.twilio.com/docs/sendgrid/ui/account-and-settings/api-keys/",
+      "docsUrl": "https://www.twilio.com/docs/sendgrid/ui/account-and-settings/api-keys/",
+      "sourceUrl": "https://www.twilio.com/docs/sendgrid/ui/account-and-settings/api-keys/",
+      "sourceKind": "official-docs",
+      "env": ["SENDGRID_API_KEY"],
+      "envSafety": { "SENDGRID_API_KEY": { "clientSafe": false } },
+      "envPatterns": ["^SENDGRID_"],
+      "packages": ["@sendgrid/mail", "@sendgrid/client"],
+      "clientSafe": false,
+      "notes": ["Create the first key in the SendGrid app; scope it to only the permissions needed."]
+    },
+    {
+      "id": "mailgun",
+      "name": "Mailgun",
+      "keyUrl": "https://documentation.mailgun.com/docs/mailgun/api-reference/mg-auth",
+      "docsUrl": "https://documentation.mailgun.com/docs/mailgun/api-reference/mg-auth",
+      "sourceUrl": "https://documentation.mailgun.com/docs/mailgun/api-reference/mg-auth",
+      "sourceKind": "official-docs",
+      "env": ["MAILGUN_API_KEY", "MAILGUN_DOMAIN", "MAILGUN_SIGNING_KEY"],
+      "envSafety": {
+        "MAILGUN_API_KEY": { "clientSafe": false },
+        "MAILGUN_DOMAIN": { "clientSafe": true },
+        "MAILGUN_SIGNING_KEY": { "clientSafe": false }
+      },
+      "envPatterns": ["^MAILGUN_"],
+      "packages": ["mailgun.js"],
+      "clientSafe": false,
+      "notes": ["Domain Sending Keys are preferred when an app only needs to send mail."]
+    },
+    {
+      "id": "postmark",
+      "name": "Postmark",
+      "keyUrl": "https://postmarkapp.com/developer/api/overview",
+      "docsUrl": "https://postmarkapp.com/developer/api/overview",
+      "sourceUrl": "https://postmarkapp.com/developer/api/overview",
+      "sourceKind": "official-docs",
+      "env": ["POSTMARK_SERVER_TOKEN", "POSTMARK_ACCOUNT_TOKEN"],
+      "envSafety": {
+        "POSTMARK_SERVER_TOKEN": { "clientSafe": false },
+        "POSTMARK_ACCOUNT_TOKEN": { "clientSafe": false }
+      },
+      "envPatterns": ["^POSTMARK_"],
+      "packages": ["postmark"],
+      "clientSafe": false,
+      "notes": ["Server tokens and account tokens have different privilege levels."]
+    },
+    {
+      "id": "brevo",
+      "name": "Brevo",
+      "aliases": ["sendinblue"],
+      "keyUrl": "https://developers.brevo.com/docs/api-key-authentication",
+      "docsUrl": "https://developers.brevo.com/docs/api-key-authentication",
+      "sourceUrl": "https://developers.brevo.com/docs/api-key-authentication",
+      "sourceKind": "official-docs",
+      "env": ["BREVO_API_KEY", "SENDINBLUE_API_KEY"],
+      "envSafety": {
+        "BREVO_API_KEY": { "clientSafe": false },
+        "SENDINBLUE_API_KEY": { "clientSafe": false }
+      },
+      "envPatterns": ["^BREVO_", "^SENDINBLUE_"],
+      "packages": ["@getbrevo/brevo"],
+      "clientSafe": false,
+      "notes": ["Generate keys from Brevo SMTP & API settings."]
+    },
+    {
       "id": "twilio",
       "name": "Twilio",
-      "keyUrl": "https://console.twilio.com/us1/account/keys-credentials/api-keys",
+      "keyUrl": "https://www.twilio.com/docs/iam/api-keys",
       "docsUrl": "https://www.twilio.com/docs/iam/api-keys",
+      "sourceUrl": "https://www.twilio.com/docs/iam/api-keys",
+      "sourceKind": "official-docs",
       "env": ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_API_KEY", "TWILIO_API_SECRET"],
       "envSafety": {
         "TWILIO_ACCOUNT_SID": { "clientSafe": false },
@@ -167,13 +280,15 @@
       "envPatterns": ["^TWILIO_"],
       "packages": ["twilio"],
       "clientSafe": false,
-      "notes": ["Auth token and API secrets must stay server-side."]
+      "notes": ["API keys are preferred over account SID + auth token for production."]
     },
     {
       "id": "github",
       "name": "GitHub",
       "keyUrl": "https://github.com/settings/tokens",
       "docsUrl": "https://docs.github.com/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens",
+      "sourceUrl": "https://docs.github.com/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens",
+      "sourceKind": "official-docs",
       "env": ["GITHUB_TOKEN", "GH_TOKEN"],
       "envSafety": {
         "GITHUB_TOKEN": { "clientSafe": false },
@@ -182,6 +297,7 @@
       "envPatterns": ["^GITHUB_", "^GH_"],
       "packages": ["@octokit/rest", "octokit"],
       "validation": {
+        "env": ["GITHUB_TOKEN", "GH_TOKEN"],
         "type": "http",
         "method": "GET",
         "url": "https://api.github.com/user",
@@ -197,11 +313,49 @@
       "notes": ["Prefer fine-grained tokens with the smallest required scope."]
     },
     {
+      "id": "firebase",
+      "name": "Firebase",
+      "keyUrl": "https://firebase.google.com/docs/projects/api-keys",
+      "docsUrl": "https://firebase.google.com/docs/projects/api-keys",
+      "sourceUrl": "https://firebase.google.com/docs/projects/api-keys",
+      "sourceKind": "official-docs",
+      "env": ["FIREBASE_API_KEY", "VITE_FIREBASE_API_KEY", "NEXT_PUBLIC_FIREBASE_API_KEY"],
+      "envSafety": {
+        "FIREBASE_API_KEY": { "clientSafe": true },
+        "VITE_FIREBASE_API_KEY": { "clientSafe": true },
+        "NEXT_PUBLIC_FIREBASE_API_KEY": { "clientSafe": true }
+      },
+      "envPatterns": ["FIREBASE_"],
+      "packages": ["firebase", "firebase-admin"],
+      "clientSafe": true,
+      "notes": ["Firebase API keys identify a project; still use Firebase Security Rules and App Check."]
+    },
+    {
+      "id": "google-cloud",
+      "name": "Google Cloud API Keys",
+      "aliases": ["gcp", "google cloud"],
+      "keyUrl": "https://cloud.google.com/api-keys/docs/create-manage-api-keys",
+      "docsUrl": "https://cloud.google.com/api-keys/docs/create-manage-api-keys",
+      "sourceUrl": "https://cloud.google.com/api-keys/docs/create-manage-api-keys",
+      "sourceKind": "official-docs",
+      "env": ["GOOGLE_API_KEY", "GOOGLE_CLOUD_API_KEY"],
+      "envSafety": {
+        "GOOGLE_API_KEY": { "clientSafe": false },
+        "GOOGLE_CLOUD_API_KEY": { "clientSafe": false }
+      },
+      "envPatterns": ["^GOOGLE_API_KEY$", "^GOOGLE_CLOUD_API_KEY$"],
+      "packages": ["googleapis", "@google-cloud/api-keys"],
+      "clientSafe": false,
+      "notes": ["Restrict API keys by API and application where possible."]
+    },
+    {
       "id": "google-maps",
       "name": "Google Maps Platform",
       "aliases": ["google maps", "maps"],
       "keyUrl": "https://console.cloud.google.com/google/maps-apis/credentials",
       "docsUrl": "https://developers.google.com/maps/api-security-best-practices",
+      "sourceUrl": "https://developers.google.com/maps/api-security-best-practices",
+      "sourceKind": "official-docs",
       "env": ["GOOGLE_MAPS_API_KEY", "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY", "VITE_GOOGLE_MAPS_API_KEY"],
       "envSafety": {
         "GOOGLE_MAPS_API_KEY": { "clientSafe": true },
@@ -214,54 +368,236 @@
       "notes": ["Restrict keys by HTTP referrer, API, or IP where possible."]
     },
     {
-      "id": "neon",
-      "name": "Neon",
-      "keyUrl": "https://console.neon.tech/app/projects",
-      "docsUrl": "https://neon.tech/docs",
-      "env": ["DATABASE_URL", "POSTGRES_URL", "NEON_API_KEY"],
+      "id": "aws",
+      "name": "AWS IAM",
+      "aliases": ["amazon web services"],
+      "keyUrl": "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html",
+      "docsUrl": "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html",
+      "sourceUrl": "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html",
+      "sourceKind": "official-docs",
+      "env": ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_REGION"],
       "envSafety": {
-        "DATABASE_URL": { "clientSafe": false },
-        "POSTGRES_URL": { "clientSafe": false },
-        "NEON_API_KEY": { "clientSafe": false }
+        "AWS_ACCESS_KEY_ID": { "clientSafe": false },
+        "AWS_SECRET_ACCESS_KEY": { "clientSafe": false },
+        "AWS_SESSION_TOKEN": { "clientSafe": false },
+        "AWS_REGION": { "clientSafe": true }
       },
-      "envPatterns": ["^NEON_", "^POSTGRES_", "^DATABASE_URL$"],
-      "packages": ["@neondatabase/serverless"],
+      "envPatterns": ["^AWS_"],
+      "packages": ["aws-sdk", "@aws-sdk/client-s3", "@aws-sdk/client-dynamodb"],
       "clientSafe": false,
-      "notes": ["Database URLs must stay server-side unless explicitly designed otherwise."]
+      "notes": ["Prefer temporary credentials or IAM roles over long-term access keys where possible."]
+    },
+    {
+      "id": "cloudflare",
+      "name": "Cloudflare",
+      "keyUrl": "https://developers.cloudflare.com/fundamentals/api/get-started/token-formats/",
+      "docsUrl": "https://developers.cloudflare.com/fundamentals/api/get-started/token-formats/",
+      "sourceUrl": "https://developers.cloudflare.com/fundamentals/api/get-started/token-formats/",
+      "sourceKind": "official-docs",
+      "env": ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_API_KEY", "CLOUDFLARE_EMAIL", "CF_API_TOKEN"],
+      "envSafety": {
+        "CLOUDFLARE_API_TOKEN": { "clientSafe": false },
+        "CLOUDFLARE_API_KEY": { "clientSafe": false },
+        "CLOUDFLARE_EMAIL": { "clientSafe": false },
+        "CF_API_TOKEN": { "clientSafe": false }
+      },
+      "envPatterns": ["^CLOUDFLARE_", "^CF_API_TOKEN$"],
+      "packages": ["cloudflare", "wrangler"],
+      "clientSafe": false,
+      "notes": ["Prefer scoped API tokens over global API keys."]
+    },
+    {
+      "id": "digitalocean",
+      "name": "DigitalOcean",
+      "keyUrl": "https://docs.digitalocean.com/reference/api/create-personal-access-token/",
+      "docsUrl": "https://docs.digitalocean.com/reference/api/create-personal-access-token/",
+      "sourceUrl": "https://docs.digitalocean.com/reference/api/create-personal-access-token/",
+      "sourceKind": "official-docs",
+      "env": ["DIGITALOCEAN_ACCESS_TOKEN", "DO_API_TOKEN"],
+      "envSafety": {
+        "DIGITALOCEAN_ACCESS_TOKEN": { "clientSafe": false },
+        "DO_API_TOKEN": { "clientSafe": false }
+      },
+      "envPatterns": ["^DIGITALOCEAN_", "^DO_API_TOKEN$"],
+      "packages": ["do-wrapper"],
+      "clientSafe": false,
+      "notes": ["Use custom scopes and expirations when possible."]
+    },
+    {
+      "id": "netlify",
+      "name": "Netlify",
+      "keyUrl": "https://docs.netlify.com/api-and-cli-guides/cli-guides/get-started-with-cli/",
+      "docsUrl": "https://docs.netlify.com/api-and-cli-guides/cli-guides/get-started-with-cli/",
+      "sourceUrl": "https://docs.netlify.com/api-and-cli-guides/cli-guides/get-started-with-cli/",
+      "sourceKind": "official-docs",
+      "env": ["NETLIFY_AUTH_TOKEN"],
+      "envSafety": { "NETLIFY_AUTH_TOKEN": { "clientSafe": false } },
+      "envPatterns": ["^NETLIFY_"],
+      "packages": ["netlify-cli", "netlify"],
+      "clientSafe": false,
+      "notes": ["Personal access tokens should be stored as NETLIFY_AUTH_TOKEN."]
     },
     {
       "id": "vercel",
       "name": "Vercel",
       "keyUrl": "https://vercel.com/account/tokens",
       "docsUrl": "https://vercel.com/docs/accounts/create-a-token",
+      "sourceUrl": "https://vercel.com/docs/accounts/create-a-token",
+      "sourceKind": "official-docs",
       "env": ["VERCEL_TOKEN"],
-      "envSafety": {
-        "VERCEL_TOKEN": { "clientSafe": false }
-      },
+      "envSafety": { "VERCEL_TOKEN": { "clientSafe": false } },
       "envPatterns": ["^VERCEL_"],
       "packages": ["vercel"],
       "clientSafe": false,
       "notes": ["Keep tokens server-side."]
     },
     {
+      "id": "neon",
+      "name": "Neon",
+      "keyUrl": "https://console.neon.tech/app/projects",
+      "docsUrl": "https://neon.tech/docs",
+      "sourceUrl": "https://neon.tech/docs",
+      "sourceKind": "official-docs",
+      "env": ["NEON_DATABASE_URL", "NEON_POSTGRES_URL", "NEON_API_KEY"],
+      "envSafety": {
+        "NEON_DATABASE_URL": { "clientSafe": false },
+        "NEON_POSTGRES_URL": { "clientSafe": false },
+        "NEON_API_KEY": { "clientSafe": false }
+      },
+      "envPatterns": ["^NEON_"],
+      "packages": ["@neondatabase/serverless"],
+      "clientSafe": false,
+      "notes": ["Database URLs must stay server-side unless explicitly designed otherwise."]
+    },
+    {
+      "id": "planetscale",
+      "name": "PlanetScale",
+      "keyUrl": "https://planetscale.com/docs/cli/service-tokens",
+      "docsUrl": "https://planetscale.com/docs/cli/service-tokens",
+      "sourceUrl": "https://planetscale.com/docs/cli/service-tokens",
+      "sourceKind": "official-docs",
+      "env": ["PLANETSCALE_SERVICE_TOKEN_ID", "PLANETSCALE_SERVICE_TOKEN", "PLANETSCALE_DATABASE_URL"],
+      "envSafety": {
+        "PLANETSCALE_SERVICE_TOKEN_ID": { "clientSafe": false },
+        "PLANETSCALE_SERVICE_TOKEN": { "clientSafe": false },
+        "PLANETSCALE_DATABASE_URL": { "clientSafe": false }
+      },
+      "envPatterns": ["^PLANETSCALE_"],
+      "packages": ["@planetscale/database"],
+      "clientSafe": false,
+      "notes": ["Both service token ID and token value are required for PlanetScale API requests."]
+    },
+    {
+      "id": "mongodb-atlas",
+      "name": "MongoDB Atlas",
+      "aliases": ["mongodb"],
+      "keyUrl": "https://www.mongodb.com/docs/atlas/configure-api-access/",
+      "docsUrl": "https://www.mongodb.com/docs/atlas/api/api-authentication/",
+      "sourceUrl": "https://www.mongodb.com/docs/atlas/configure-api-access/",
+      "sourceKind": "official-docs",
+      "env": ["MONGODB_URI", "MONGODB_ATLAS_PUBLIC_KEY", "MONGODB_ATLAS_PRIVATE_KEY"],
+      "envSafety": {
+        "MONGODB_URI": { "clientSafe": false },
+        "MONGODB_ATLAS_PUBLIC_KEY": { "clientSafe": false },
+        "MONGODB_ATLAS_PRIVATE_KEY": { "clientSafe": false }
+      },
+      "envPatterns": ["^MONGODB_", "^MONGO_"],
+      "packages": ["mongodb", "mongoose"],
+      "clientSafe": false,
+      "notes": ["Atlas recommends service accounts over legacy API keys for administration."]
+    },
+    {
+      "id": "upstash",
+      "name": "Upstash",
+      "keyUrl": "https://upstash.com/docs/redis/features/restapi",
+      "docsUrl": "https://upstash.com/docs/redis/features/restapi",
+      "sourceUrl": "https://upstash.com/docs/redis/features/restapi",
+      "sourceKind": "official-docs",
+      "env": ["UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN"],
+      "envSafety": {
+        "UPSTASH_REDIS_REST_URL": { "clientSafe": false },
+        "UPSTASH_REDIS_REST_TOKEN": { "clientSafe": false }
+      },
+      "envPatterns": ["^UPSTASH_"],
+      "packages": ["@upstash/redis"],
+      "clientSafe": false,
+      "notes": ["REST tokens authenticate Upstash Redis REST requests."]
+    },
+    {
       "id": "pinecone",
       "name": "Pinecone",
-      "keyUrl": "https://app.pinecone.io/",
+      "keyUrl": "https://docs.pinecone.io/guides/projects/manage-api-keys",
       "docsUrl": "https://docs.pinecone.io/guides/projects/manage-api-keys",
+      "sourceUrl": "https://docs.pinecone.io/guides/projects/manage-api-keys",
+      "sourceKind": "official-docs",
       "env": ["PINECONE_API_KEY"],
-      "envSafety": {
-        "PINECONE_API_KEY": { "clientSafe": false }
-      },
+      "envSafety": { "PINECONE_API_KEY": { "clientSafe": false } },
       "envPatterns": ["^PINECONE_"],
       "packages": ["@pinecone-database/pinecone"],
       "clientSafe": false,
-      "notes": ["Keep server-side."]
+      "notes": ["API keys are shown only once after creation."]
+    },
+    {
+      "id": "qdrant",
+      "name": "Qdrant",
+      "keyUrl": "https://qdrant.tech/documentation/cloud/authentication/",
+      "docsUrl": "https://qdrant.tech/documentation/cloud/authentication/",
+      "sourceUrl": "https://qdrant.tech/documentation/cloud/authentication/",
+      "sourceKind": "official-docs",
+      "env": ["QDRANT_API_KEY", "QDRANT_URL"],
+      "envSafety": {
+        "QDRANT_API_KEY": { "clientSafe": false },
+        "QDRANT_URL": { "clientSafe": true }
+      },
+      "envPatterns": ["^QDRANT_"],
+      "packages": ["@qdrant/js-client-rest"],
+      "clientSafe": false,
+      "notes": ["Database API keys can be created from the cluster detail page."]
+    },
+    {
+      "id": "mapbox",
+      "name": "Mapbox",
+      "keyUrl": "https://docs.mapbox.com/accounts/guides/tokens/",
+      "docsUrl": "https://docs.mapbox.com/accounts/guides/tokens/",
+      "sourceUrl": "https://docs.mapbox.com/accounts/guides/tokens/",
+      "sourceKind": "official-docs",
+      "env": ["MAPBOX_ACCESS_TOKEN", "NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN", "VITE_MAPBOX_ACCESS_TOKEN"],
+      "envSafety": {
+        "MAPBOX_ACCESS_TOKEN": { "clientSafe": true },
+        "NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN": { "clientSafe": true },
+        "VITE_MAPBOX_ACCESS_TOKEN": { "clientSafe": true }
+      },
+      "envPatterns": ["^MAPBOX_", "^NEXT_PUBLIC_MAPBOX_", "^VITE_MAPBOX_"],
+      "packages": ["mapbox-gl", "@mapbox/mapbox-sdk"],
+      "clientSafe": true,
+      "notes": ["Public tokens are client-safe; secret tokens are server-only. Restrict public tokens by URL where possible."]
+    },
+    {
+      "id": "clerk",
+      "name": "Clerk",
+      "keyUrl": "https://clerk.com/docs/guides/development/clerk-environment-variables",
+      "docsUrl": "https://clerk.com/docs/guides/development/clerk-environment-variables",
+      "sourceUrl": "https://clerk.com/docs/guides/development/clerk-environment-variables",
+      "sourceKind": "official-docs",
+      "env": ["CLERK_SECRET_KEY", "CLERK_PUBLISHABLE_KEY", "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "VITE_CLERK_PUBLISHABLE_KEY"],
+      "envSafety": {
+        "CLERK_SECRET_KEY": { "clientSafe": false },
+        "CLERK_PUBLISHABLE_KEY": { "clientSafe": true },
+        "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY": { "clientSafe": true },
+        "VITE_CLERK_PUBLISHABLE_KEY": { "clientSafe": true }
+      },
+      "envPatterns": ["CLERK_"],
+      "packages": ["@clerk/nextjs", "@clerk/clerk-react"],
+      "clientSafe": false,
+      "notes": ["Publishable keys are client-side. CLERK_SECRET_KEY must stay server-side."]
     },
     {
       "id": "auth0",
       "name": "Auth0",
-      "keyUrl": "https://manage.auth0.com/dashboard/",
-      "docsUrl": "https://auth0.com/docs/get-started/applications/application-settings",
+      "keyUrl": "https://auth0.com/docs/get-started/applications/credentials",
+      "docsUrl": "https://auth0.com/docs/get-started/applications/credentials",
+      "sourceUrl": "https://auth0.com/docs/get-started/applications/credentials",
+      "sourceKind": "official-docs",
       "env": ["AUTH0_SECRET", "AUTH0_CLIENT_ID", "AUTH0_CLIENT_SECRET", "AUTH0_ISSUER_BASE_URL"],
       "envSafety": {
         "AUTH0_SECRET": { "clientSafe": false },
@@ -273,6 +609,361 @@
       "packages": ["@auth0/nextjs-auth0", "auth0"],
       "clientSafe": false,
       "notes": ["Client IDs may be public. Client secrets must stay server-side."]
+    },
+    {
+      "id": "datadog",
+      "name": "Datadog",
+      "keyUrl": "https://docs.datadoghq.com/account_management/api-app-keys/",
+      "docsUrl": "https://docs.datadoghq.com/account_management/api-app-keys/",
+      "sourceUrl": "https://docs.datadoghq.com/account_management/api-app-keys/",
+      "sourceKind": "official-docs",
+      "env": ["DATADOG_API_KEY", "DATADOG_APP_KEY", "DD_API_KEY", "DD_APP_KEY"],
+      "envSafety": {
+        "DATADOG_API_KEY": { "clientSafe": false },
+        "DATADOG_APP_KEY": { "clientSafe": false },
+        "DD_API_KEY": { "clientSafe": false },
+        "DD_APP_KEY": { "clientSafe": false }
+      },
+      "envPatterns": ["^DATADOG_", "^DD_API_KEY$", "^DD_APP_KEY$"],
+      "packages": ["@datadog/datadog-api-client"],
+      "clientSafe": false,
+      "notes": ["Datadog distinguishes organization API keys from user-associated application keys."]
+    },
+    {
+      "id": "sentry",
+      "name": "Sentry",
+      "keyUrl": "https://docs.sentry.io/api/auth/",
+      "docsUrl": "https://docs.sentry.io/api/auth/",
+      "sourceUrl": "https://docs.sentry.io/api/auth/",
+      "sourceKind": "official-docs",
+      "env": ["SENTRY_AUTH_TOKEN", "SENTRY_DSN"],
+      "envSafety": {
+        "SENTRY_AUTH_TOKEN": { "clientSafe": false },
+        "SENTRY_DSN": { "clientSafe": true }
+      },
+      "envPatterns": ["^SENTRY_"],
+      "packages": ["@sentry/node", "@sentry/nextjs", "@sentry/react"],
+      "clientSafe": false,
+      "notes": ["Auth tokens are secret. DSNs are limited public identifiers for event ingestion."]
+    },
+    {
+      "id": "groq",
+      "name": "Groq",
+      "keyUrl": "https://console.groq.com/keys",
+      "docsUrl": "https://console.groq.com/docs",
+      "sourceUrl": "https://console.groq.com/docs",
+      "sourceKind": "official-docs",
+      "env": ["GROQ_API_KEY"],
+      "envSafety": {
+        "GROQ_API_KEY": { "clientSafe": false }
+      },
+      "envPatterns": ["^GROQ_"],
+      "packages": ["groq-sdk"],
+      "clientSafe": false,
+      "notes": ["Groq supports an OpenAI-compatible base URL, but the key is still a Groq key."]
+    },
+    {
+      "id": "replicate",
+      "name": "Replicate",
+      "keyUrl": "https://replicate.com/account/api-tokens",
+      "docsUrl": "https://replicate.com/docs/topics/security/api-tokens/",
+      "sourceUrl": "https://replicate.com/docs/topics/security/api-tokens/",
+      "sourceKind": "official-docs",
+      "env": ["REPLICATE_API_TOKEN"],
+      "envSafety": {
+        "REPLICATE_API_TOKEN": { "clientSafe": false }
+      },
+      "envPatterns": ["^REPLICATE_"],
+      "packages": ["replicate"],
+      "clientSafe": false,
+      "notes": ["Replicate tokens are secrets and should stay server-side."]
+    },
+    {
+      "id": "elevenlabs",
+      "name": "ElevenLabs",
+      "keyUrl": "https://elevenlabs.io/docs/api-reference/authentication",
+      "docsUrl": "https://elevenlabs.io/docs/api-reference/authentication",
+      "sourceUrl": "https://elevenlabs.io/docs/api-reference/authentication",
+      "sourceKind": "official-docs",
+      "env": ["ELEVENLABS_API_KEY"],
+      "envSafety": {
+        "ELEVENLABS_API_KEY": { "clientSafe": false }
+      },
+      "envPatterns": ["^ELEVENLABS_"],
+      "packages": ["@elevenlabs/elevenlabs-js", "elevenlabs"],
+      "validation": {
+        "env": ["ELEVENLABS_API_KEY"],
+        "type": "http",
+        "method": "GET",
+        "url": "https://api.elevenlabs.io/v1/models",
+        "headers": {
+          "xi-api-key": "{value}"
+        },
+        "okStatus": [200],
+        "success": "ElevenLabs accepted the key."
+      },
+      "clientSafe": false,
+      "notes": ["ElevenLabs API keys are secrets. Use single-use tokens for client-side workflows where supported."]
+    },
+    {
+      "id": "deepgram",
+      "name": "Deepgram",
+      "keyUrl": "https://developers.deepgram.com/docs/create-additional-api-keys",
+      "docsUrl": "https://developers.deepgram.com/docs/authenticating",
+      "sourceUrl": "https://developers.deepgram.com/docs/create-additional-api-keys",
+      "sourceKind": "official-docs",
+      "env": ["DEEPGRAM_API_KEY"],
+      "envSafety": {
+        "DEEPGRAM_API_KEY": { "clientSafe": false }
+      },
+      "envPatterns": ["^DEEPGRAM_"],
+      "packages": ["@deepgram/sdk"],
+      "validation": {
+        "env": ["DEEPGRAM_API_KEY"],
+        "type": "http",
+        "method": "GET",
+        "url": "https://api.deepgram.com/v1/auth/token",
+        "headers": {
+          "Authorization": "Token {value}"
+        },
+        "okStatus": [200],
+        "success": "Deepgram accepted the key."
+      },
+      "clientSafe": false,
+      "notes": ["Deepgram keys can have project roles and expiration settings."]
+    },
+    {
+      "id": "perplexity",
+      "name": "Perplexity",
+      "keyUrl": "https://docs.perplexity.ai/docs/admin/api-key-management",
+      "docsUrl": "https://docs.perplexity.ai/docs/admin/api-key-management",
+      "sourceUrl": "https://docs.perplexity.ai/docs/admin/api-key-management",
+      "sourceKind": "official-docs",
+      "env": ["PERPLEXITY_API_KEY"],
+      "envSafety": {
+        "PERPLEXITY_API_KEY": { "clientSafe": false }
+      },
+      "envPatterns": ["^PERPLEXITY_"],
+      "clientSafe": false,
+      "notes": ["Perplexity API keys are shown only once when created."]
+    },
+    {
+      "id": "openrouter",
+      "name": "OpenRouter",
+      "keyUrl": "https://openrouter.ai/settings/keys",
+      "docsUrl": "https://openrouter.ai/docs/api-keys",
+      "sourceUrl": "https://openrouter.ai/docs/api-keys",
+      "sourceKind": "official-docs",
+      "env": ["OPENROUTER_API_KEY"],
+      "envSafety": {
+        "OPENROUTER_API_KEY": { "clientSafe": false }
+      },
+      "envPatterns": ["^OPENROUTER_"],
+      "clientSafe": false,
+      "notes": ["OpenRouter keys can cover model costs and should be treated as powerful secrets."]
+    },
+    {
+      "id": "tavily",
+      "name": "Tavily",
+      "keyUrl": "https://docs.tavily.com/documentation/quickstart",
+      "docsUrl": "https://docs.tavily.com/documentation/api-reference/introduction",
+      "sourceUrl": "https://docs.tavily.com/documentation/api-reference/introduction",
+      "sourceKind": "official-docs",
+      "env": ["TAVILY_API_KEY"],
+      "envSafety": {
+        "TAVILY_API_KEY": { "clientSafe": false }
+      },
+      "envPatterns": ["^TAVILY_"],
+      "packages": ["@tavily/core"],
+      "clientSafe": false,
+      "notes": ["Tavily authenticates API requests with bearer API keys."]
+    },
+    {
+      "id": "fireworks-ai",
+      "name": "Fireworks AI",
+      "keyUrl": "https://docs.fireworks.ai/getting-started/quickstart",
+      "docsUrl": "https://docs.fireworks.ai/api-reference/introduction",
+      "sourceUrl": "https://docs.fireworks.ai/getting-started/quickstart",
+      "sourceKind": "official-docs",
+      "env": ["FIREWORKS_API_KEY"],
+      "envSafety": {
+        "FIREWORKS_API_KEY": { "clientSafe": false }
+      },
+      "envPatterns": ["^FIREWORKS_"],
+      "clientSafe": false,
+      "notes": ["Fireworks API keys are bearer tokens and should stay server-side."]
+    },
+    {
+      "id": "algolia",
+      "name": "Algolia",
+      "keyUrl": "https://www.algolia.com/doc/guides/security/api-keys/",
+      "docsUrl": "https://www.algolia.com/doc/guides/security/api-keys/",
+      "sourceUrl": "https://www.algolia.com/doc/guides/security/api-keys/",
+      "sourceKind": "official-docs",
+      "env": [
+        "ALGOLIA_APP_ID",
+        "ALGOLIA_API_KEY",
+        "ALGOLIA_ADMIN_API_KEY",
+        "ALGOLIA_SEARCH_API_KEY",
+        "NEXT_PUBLIC_ALGOLIA_APP_ID",
+        "NEXT_PUBLIC_ALGOLIA_SEARCH_API_KEY"
+      ],
+      "envSafety": {
+        "ALGOLIA_APP_ID": { "clientSafe": true },
+        "ALGOLIA_API_KEY": { "clientSafe": false },
+        "ALGOLIA_ADMIN_API_KEY": { "clientSafe": false },
+        "ALGOLIA_SEARCH_API_KEY": { "clientSafe": true },
+        "NEXT_PUBLIC_ALGOLIA_APP_ID": { "clientSafe": true },
+        "NEXT_PUBLIC_ALGOLIA_SEARCH_API_KEY": { "clientSafe": true }
+      },
+      "envPatterns": ["^ALGOLIA_", "^NEXT_PUBLIC_ALGOLIA_"],
+      "packages": ["algoliasearch"],
+      "clientSafe": false,
+      "notes": ["Algolia admin API keys are sensitive. Search-only keys are designed for frontend search."]
+    },
+    {
+      "id": "launchdarkly",
+      "name": "LaunchDarkly",
+      "keyUrl": "https://launchdarkly.com/docs/home/account/api-create",
+      "docsUrl": "https://launchdarkly.com/docs/home/account/api",
+      "sourceUrl": "https://launchdarkly.com/docs/home/account/api-create",
+      "sourceKind": "official-docs",
+      "env": ["LAUNCHDARKLY_ACCESS_TOKEN", "LD_ACCESS_TOKEN", "LAUNCHDARKLY_SDK_KEY", "LAUNCHDARKLY_CLIENT_ID"],
+      "envSafety": {
+        "LAUNCHDARKLY_ACCESS_TOKEN": { "clientSafe": false },
+        "LD_ACCESS_TOKEN": { "clientSafe": false },
+        "LAUNCHDARKLY_SDK_KEY": { "clientSafe": false },
+        "LAUNCHDARKLY_CLIENT_ID": { "clientSafe": true }
+      },
+      "envPatterns": ["^LAUNCHDARKLY_", "^LD_ACCESS_TOKEN$"],
+      "packages": ["launchdarkly-node-server-sdk", "launchdarkly-js-client-sdk"],
+      "clientSafe": false,
+      "notes": ["Access tokens and server SDK keys are private. Client-side IDs are designed for browser SDKs."]
+    },
+    {
+      "id": "segment",
+      "name": "Segment",
+      "keyUrl": "https://www.twilio.com/docs/segment/connections/find-writekey",
+      "docsUrl": "https://www.twilio.com/docs/segment/connections/find-writekey",
+      "sourceUrl": "https://www.twilio.com/docs/segment/connections/find-writekey",
+      "sourceKind": "official-docs",
+      "env": ["SEGMENT_WRITE_KEY", "NEXT_PUBLIC_SEGMENT_WRITE_KEY"],
+      "envSafety": {
+        "SEGMENT_WRITE_KEY": { "clientSafe": false },
+        "NEXT_PUBLIC_SEGMENT_WRITE_KEY": { "clientSafe": true }
+      },
+      "envPatterns": ["^SEGMENT_", "^NEXT_PUBLIC_SEGMENT_"],
+      "packages": ["@segment/analytics-node", "@segment/analytics-next", "analytics-node"],
+      "clientSafe": false,
+      "notes": ["Segment write keys identify a source. Browser write keys are exposed by design but can be abused for noisy data."]
+    },
+    {
+      "id": "plaid",
+      "name": "Plaid",
+      "keyUrl": "https://plaid.com/docs/quickstart/",
+      "docsUrl": "https://plaid.com/docs/api/",
+      "sourceUrl": "https://plaid.com/docs/api/",
+      "sourceKind": "official-docs",
+      "env": ["PLAID_CLIENT_ID", "PLAID_SECRET", "PLAID_ENV"],
+      "envSafety": {
+        "PLAID_CLIENT_ID": { "clientSafe": false },
+        "PLAID_SECRET": { "clientSafe": false },
+        "PLAID_ENV": { "clientSafe": true }
+      },
+      "envPatterns": ["^PLAID_"],
+      "packages": ["plaid"],
+      "clientSafe": false,
+      "notes": ["Plaid client IDs and secrets are used together for API authentication. Keep them server-side."]
+    },
+    {
+      "id": "square",
+      "name": "Square",
+      "keyUrl": "https://developer.squareup.com/docs/build-basics/access-tokens",
+      "docsUrl": "https://developer.squareup.com/docs/build-basics/access-tokens",
+      "sourceUrl": "https://developer.squareup.com/docs/build-basics/access-tokens",
+      "sourceKind": "official-docs",
+      "env": ["SQUARE_ACCESS_TOKEN", "SQUARE_APPLICATION_ID", "SQUARE_LOCATION_ID"],
+      "envSafety": {
+        "SQUARE_ACCESS_TOKEN": { "clientSafe": false },
+        "SQUARE_APPLICATION_ID": { "clientSafe": true },
+        "SQUARE_LOCATION_ID": { "clientSafe": true }
+      },
+      "envPatterns": ["^SQUARE_"],
+      "packages": ["square"],
+      "clientSafe": false,
+      "notes": ["Square access tokens are credentials for API access. Protect them like passwords."]
+    },
+    {
+      "id": "paypal",
+      "name": "PayPal",
+      "keyUrl": "https://docs.paypal.ai/get-started/how-to/use-rest-api/get-api-credentials",
+      "docsUrl": "https://docs.paypal.ai/get-started/how-to/use-rest-api/get-api-credentials",
+      "sourceUrl": "https://docs.paypal.ai/get-started/how-to/use-rest-api/get-api-credentials",
+      "sourceKind": "official-docs",
+      "env": ["PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET"],
+      "envSafety": {
+        "PAYPAL_CLIENT_ID": { "clientSafe": true },
+        "PAYPAL_CLIENT_SECRET": { "clientSafe": false }
+      },
+      "envPatterns": ["^PAYPAL_"],
+      "clientSafe": false,
+      "notes": ["PayPal client secrets authenticate the client ID and must stay secret."]
+    },
+    {
+      "id": "slack",
+      "name": "Slack",
+      "keyUrl": "https://docs.slack.dev/authentication/tokens/",
+      "docsUrl": "https://docs.slack.dev/authentication/tokens/",
+      "sourceUrl": "https://docs.slack.dev/authentication/tokens/",
+      "sourceKind": "official-docs",
+      "env": ["SLACK_BOT_TOKEN", "SLACK_USER_TOKEN", "SLACK_APP_TOKEN", "SLACK_SIGNING_SECRET"],
+      "envSafety": {
+        "SLACK_BOT_TOKEN": { "clientSafe": false },
+        "SLACK_USER_TOKEN": { "clientSafe": false },
+        "SLACK_APP_TOKEN": { "clientSafe": false },
+        "SLACK_SIGNING_SECRET": { "clientSafe": false }
+      },
+      "envPatterns": ["^SLACK_"],
+      "packages": ["@slack/bolt", "@slack/web-api"],
+      "clientSafe": false,
+      "notes": ["Slack bot, user, app tokens, and signing secrets are all sensitive."]
+    },
+    {
+      "id": "discord",
+      "name": "Discord",
+      "keyUrl": "https://discord.com/developers/applications",
+      "docsUrl": "https://docs.discord.com/developers/docs/getting-started",
+      "sourceUrl": "https://docs.discord.com/developers/docs/getting-started",
+      "sourceKind": "official-docs",
+      "env": ["DISCORD_TOKEN", "DISCORD_BOT_TOKEN", "DISCORD_CLIENT_ID", "DISCORD_PUBLIC_KEY"],
+      "envSafety": {
+        "DISCORD_TOKEN": { "clientSafe": false },
+        "DISCORD_BOT_TOKEN": { "clientSafe": false },
+        "DISCORD_CLIENT_ID": { "clientSafe": true },
+        "DISCORD_PUBLIC_KEY": { "clientSafe": true }
+      },
+      "envPatterns": ["^DISCORD_"],
+      "packages": ["discord.js"],
+      "clientSafe": false,
+      "notes": ["Discord bot tokens are highly sensitive and cannot be viewed again after leaving the page unless regenerated."]
+    },
+    {
+      "id": "airtable",
+      "name": "Airtable",
+      "keyUrl": "https://support.airtable.com/docs/how-do-i-get-my-api-key-",
+      "docsUrl": "https://support.airtable.com/docs/how-do-i-get-my-api-key-",
+      "sourceUrl": "https://support.airtable.com/docs/how-do-i-get-my-api-key-",
+      "sourceKind": "official-docs",
+      "env": ["AIRTABLE_API_KEY", "AIRTABLE_ACCESS_TOKEN", "AIRTABLE_BASE_ID"],
+      "envSafety": {
+        "AIRTABLE_API_KEY": { "clientSafe": false },
+        "AIRTABLE_ACCESS_TOKEN": { "clientSafe": false },
+        "AIRTABLE_BASE_ID": { "clientSafe": true }
+      },
+      "envPatterns": ["^AIRTABLE_"],
+      "packages": ["airtable"],
+      "clientSafe": false,
+      "notes": ["Legacy API keys are deprecated; use personal access tokens."]
     }
   ]
 }

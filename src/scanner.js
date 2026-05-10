@@ -15,7 +15,10 @@ const skipDirs = new Set([
   "coverage",
   ".turbo",
   ".vercel",
-  ".cache"
+  ".cache",
+  "__tests__",
+  "test",
+  "tests"
 ]);
 
 const skipFiles = new Set([
@@ -64,6 +67,26 @@ const envPatterns = [
   /os\.getenv\(['"]([A-Za-z_][A-Za-z0-9_]*)['"]\)/g,
   /ENV\[['"]([A-Za-z_][A-Za-z0-9_]*)['"]\]/g
 ];
+
+const ignoredEnvNames = new Set([
+  "CI",
+  "FORCE_COLOR",
+  "FORCE_HYPERLINK",
+  "GITHUB_ACTIONS",
+  "HOME",
+  "MY_KEY",
+  "NO_COLOR",
+  "NODE_ENV",
+  "PATH",
+  "PWD",
+  "SHELL",
+  "TERM",
+  "TERM_PROGRAM",
+  "USER",
+  "USERNAME",
+  "WT_SESSION",
+  "X"
+]);
 
 const secretPatterns = [
   { id: "openai", pattern: /\bsk-proj-[A-Za-z0-9_-]{20,}\b|\bsk-[A-Za-z0-9]{32,}\b/g },
@@ -125,7 +148,9 @@ export async function doctor(root, providers, options = {}) {
 
   checks.push(existsSync(path.join(root, ".env.example"))
     ? { level: "ok", message: ".env.example exists" }
-    : { level: "warn", message: ".env.example is missing" });
+    : scan.envVars.length
+      ? { level: "warn", message: ".env.example is missing" }
+      : { level: "ok", message: "No .env.example needed; no env vars detected" });
 
   if (existsSync(envPath)) {
     checks.push({ level: "ok", message: ".env exists locally" });
@@ -137,19 +162,19 @@ export async function doctor(root, providers, options = {}) {
     checks.push(missing.length
       ? { level: "warn", message: `.env is missing ${missing.length} detected value(s): ${missing.map((item) => item.name).join(", ")}` }
       : { level: "ok", message: ".env has all detected values" });
-  } else {
+  } else if (scan.envVars.length) {
     checks.push({ level: "warn", message: ".env not found; run envhelper start" });
+  } else {
+    checks.push({ level: "ok", message: "No .env needed; no env vars detected" });
   }
 
   checks.push(existsSync(path.join(root, ".env.team.enc"))
     ? { level: "ok", message: ".env.team.enc exists" }
     : { level: "ok", message: "No team bundle found; sharing is optional" });
 
-  if (scan.envVars.length) {
-    checks.push({ level: "ok", message: `Detected ${scan.envVars.length} env var(s)` });
-  } else {
-    checks.push({ level: "warn", message: "No env vars detected" });
-  }
+  checks.push(scan.envVars.length
+    ? { level: "ok", message: `Detected ${scan.envVars.length} env var(s)` }
+    : { level: "ok", message: "No env vars detected" });
 
   const files = await listFiles(root);
   for (const file of files) {
@@ -176,7 +201,7 @@ export async function doctor(root, providers, options = {}) {
   if (options.history) {
     findings.push(...scanGitHistory(root));
   } else {
-    checks.push({ level: "warn", message: "Git history scan skipped; run envhelper doctor --history for a slower check" });
+    checks.push({ level: "info", message: "Git history scan skipped; run envhelper doctor --history for a slower check" });
   }
 
   for (const env of scan.envVars) {
@@ -217,8 +242,9 @@ async function collectEnvhelperMetadata(root, envVars) {
 }
 
 function addEnv(map, name, source) {
-  if (!name || name === "NODE_ENV") return;
+  if (!name) return;
   const normalized = name.trim();
+  if (ignoredEnvNames.has(normalized.toUpperCase())) return;
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(normalized)) return;
   const current = map.get(normalized) || { name: normalized, sources: [] };
   if (!current.sources.includes(source)) current.sources.push(source);
@@ -250,12 +276,17 @@ async function listFiles(root) {
         await walk(path.join(dir, entry.name));
       } else if (entry.isFile()) {
         if (skipFiles.has(entry.name)) continue;
+        if (isProbablyTestFile(entry.name)) continue;
         out.push(path.join(dir, entry.name));
       }
     }
   }
   await walk(root);
   return out;
+}
+
+function isProbablyTestFile(name) {
+  return /\.(test|spec)\.[cm]?[jt]sx?$/.test(name);
 }
 
 async function safeRead(file) {

@@ -139,18 +139,20 @@ Decrypt `.env.team.enc` locally into `.env`.
 
 ```bash
 envhelper providers
+envhelper providers --json
 ```
 
-Show the built-in provider directory.
+Show the built-in provider directory in human-readable or JSON form.
 
 ## Provider Links
 
 There are too many API providers to hard-code perfectly, so EnvHelper uses a layered provider directory:
 
-1. Built-in curated providers for common services like Stripe, Supabase, Anthropic, OpenAI, Clerk, Resend, Twilio, Firebase, GitHub, and Google Maps.
+1. Built-in curated providers for 51 common services like Stripe, Supabase, Anthropic, OpenAI, Clerk, Resend, Twilio, Firebase, GitHub, Google Maps, AWS, Cloudflare, Vercel, Neon, Pinecone, MongoDB Atlas, Groq, Replicate, Deepgram, Slack, Discord, Plaid, Square, and PayPal.
 2. Env var and package-name patterns to infer providers from names like `STRIPE_SECRET_KEY` or dependencies like `stripe`.
-3. Project-local overrides in `.envhelper.providers.json`.
-4. A Google search URL when EnvHelper cannot identify a provider.
+3. A Google search URL when EnvHelper cannot identify a provider.
+
+Built-in providers require a `sourceUrl` pointing to official docs or an official dashboard. The provider audit rejects duplicate env vars, generic mappings like `DATABASE_URL`, invalid URLs, and guessed search-result sources.
 
 Provider metadata is intentionally non-secret:
 
@@ -160,9 +162,11 @@ Provider metadata is intentionally non-secret:
   "name": "Stripe",
   "keyUrl": "https://dashboard.stripe.com/apikeys",
   "docsUrl": "https://docs.stripe.com/keys",
+  "sourceUrl": "https://docs.stripe.com/keys",
   "env": ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY"],
   "clientSafe": false,
   "validation": {
+    "env": ["STRIPE_SECRET_KEY"],
     "type": "http",
     "method": "GET",
     "url": "https://api.stripe.com/v1/balance"

@@ -1,6 +1,6 @@
 # Provider Directory
 
-EnvHelper cannot hard-code every API provider. The provider system is layered so the common path is fast while uncommon providers still have a useful fallback.
+EnvHelper cannot hard-code every API provider. The provider system is layered so the common path is fast while uncommon providers still get a useful Google search fallback.
 
 ## Resolution Order
 
@@ -17,9 +17,22 @@ EnvHelper prints terminal-clickable links where supported. If the terminal does 
 envhelper link stripe
 envhelper link ACME_API_KEY --copy
 envhelper link ACME_API_KEY --open
+envhelper providers --json
 ```
 
 Known providers resolve to their key page. Unknown variables resolve to a Google search for that env var plus "API key env var".
+
+## Source Policy
+
+Built-in provider links must be source-backed. Every provider entry needs a `sourceUrl` pointing to official docs or an official dashboard, and `npm run providers:audit` enforces the basics:
+
+- no guessed `example.com` or search-result sources,
+- no duplicate exact env var mappings,
+- no generic exact mappings like `DATABASE_URL`,
+- valid HTTPS URLs,
+- valid env var names and regex patterns.
+
+When EnvHelper does not know a provider, it should not pretend. It prints a Google search URL instead.
 
 ## Validation
 
@@ -31,39 +44,14 @@ Validation can be:
 - `format`: local regex check, no network request.
 - `http`: provider API request, with the secret sent only to that provider.
 
-## Local Overrides
+HTTP validators must be scoped to exact env vars with `validation.env`, so a public key is never checked against a secret-key endpoint.
 
-Projects can add `.envhelper.providers.json` to define custom providers or override built-in links.
+## Adding Providers
 
-```json
-{
-  "providers": [
-    {
-      "id": "my-provider",
-      "name": "My Provider",
-      "keyUrl": "https://example.com/dashboard/api-keys",
-      "docsUrl": "https://example.com/docs",
-      "env": ["MY_PROVIDER_API_KEY"],
-      "envPatterns": ["^MY_PROVIDER_"],
-      "packages": ["my-provider-sdk"],
-      "clientSafe": false,
-      "validation": {
-        "type": "http",
-        "method": "GET",
-        "url": "https://example.com/v1/me",
-        "headers": {
-          "Authorization": "Bearer {value}"
-        },
-        "okStatus": [200],
-        "success": "My Provider accepted the key."
-      },
-      "envSafety": {
-        "MY_PROVIDER_API_KEY": { "clientSafe": false }
-      },
-      "notes": ["Keep server-side."]
-    }
-  ]
-}
+Add providers by editing `providers/providers.json` and running:
+
+```bash
+npm run providers:audit
 ```
 
-This keeps the MVP useful for thousands of services without pretending the built-in list can be complete on day one.
+Prefer official documentation URLs over unauthenticated dashboards when the dashboard path may vary by account or organization.

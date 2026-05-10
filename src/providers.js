@@ -1,19 +1,11 @@
 import fs from "node:fs/promises";
-import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const providerPath = fileURLToPath(new URL("../providers/providers.json", import.meta.url));
 
 export async function loadProviders() {
   const raw = await fs.readFile(providerPath, "utf8");
-  const builtIn = JSON.parse(raw).providers;
-  const localPath = path.join(process.cwd(), ".envhelper.providers.json");
-  try {
-    const local = JSON.parse(await fs.readFile(localPath, "utf8"));
-    return mergeProviders(builtIn, local.providers || []);
-  } catch {
-    return builtIn;
-  }
+  return JSON.parse(raw).providers;
 }
 
 export function providerTable(providers) {
@@ -21,7 +13,9 @@ export function providerTable(providers) {
     id: provider.id,
     name: provider.name,
     env: provider.env || [],
-    keyUrl: provider.keyUrl
+    keyUrl: provider.keyUrl,
+    docsUrl: provider.docsUrl,
+    sourceUrl: provider.sourceUrl
   }));
 }
 
@@ -61,14 +55,6 @@ export function envVarClientSafe(name, provider) {
   if (upper.includes("SECRET") || upper.includes("PRIVATE") || upper.includes("SERVICE_ROLE")) return false;
   if (upper.startsWith("NEXT_PUBLIC_") || upper.startsWith("VITE_") || upper.startsWith("PUBLIC_")) return true;
   return provider.clientSafe ?? null;
-}
-
-function mergeProviders(builtIn, local) {
-  const byId = new Map(builtIn.map((provider) => [provider.id, provider]));
-  for (const provider of local) {
-    byId.set(provider.id, { ...(byId.get(provider.id) || {}), ...provider });
-  }
-  return [...byId.values()];
 }
 
 function isGenericEnvName(name) {

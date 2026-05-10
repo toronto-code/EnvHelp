@@ -6,12 +6,40 @@
   "bin": {
     "envhelper": "./src/cli.js"
   },
+  "files": [
+    "src",
+    "providers",
+    "README.md",
+    "SECURITY.md",
+    "THREAT_MODEL.md",
+    "CONTRIBUTING.md",
+    "LICENSE"
+  ],
   "scripts": {
     "start": "node ./src/cli.js start",
     "doctor": "node ./src/cli.js doctor",
     "providers": "node ./src/cli.js providers",
-    "test": "node --test"
+    "providers:audit": "node ./scripts/audit-providers.js",
+    "check": "npm test",
+    "test": "node --test && node ./scripts/audit-providers.js"
   },
+  "keywords": [
+    "env",
+    "dotenv",
+    "api-keys",
+    "secrets",
+    "hackathon",
+    "cli",
+    "age-encryption"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/toronto-code/EnvHelp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/toronto-code/EnvHelp/issues"
+  },
+  "homepage": "https://github.com/toronto-code/EnvHelp#readme",
   "engines": {
     "node": ">=18"
   },

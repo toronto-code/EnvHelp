@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline";
+import { fileURLToPath } from "node:url";
 
 import { decryptBundle, ensureAgeIdentity, encryptBundle, hasAge } from "./crypto-age.js";
 import { ensureEnvIgnored, parseEnvFile, upsertEnvFile, writeEnvExample } from "./envfile.js";
@@ -12,6 +13,8 @@ import { doctor, scanProject } from "./scanner.js";
 import { canValidateEnvVar, validateEnvValue } from "./validators.js";
 
 const cwd = process.cwd();
+let pipedInputLines = null;
+let pipedInputIndex = 0;
 
 const commands = {
   start,
@@ -29,16 +32,32 @@ const commands = {
   rekey: share,
   join,
   providers: providersCommand,
+  version,
   help
 };
 
 const command = process.argv[2] || "help";
 const args = process.argv.slice(3);
 
+if (command === "--help" || command === "-h") {
+  help();
+  process.exit(0);
+}
+
+if (command === "--version" || command === "-v") {
+  await version();
+  process.exit(0);
+}
+
 if (!commands[command]) {
   console.error(`Unknown command: ${command}`);
   help();
   process.exit(1);
+}
+
+if (args.includes("--help") || args.includes("-h")) {
+  commandHelp(command);
+  process.exit(0);
 }
 
 await commands[command](args);
@@ -79,7 +98,8 @@ async function start(argv = []) {
     console.log(item.name);
     if (provider) {
       console.log(`Provider: ${provider.name}`);
-      if (provider.keyUrl) console.log(`Create/find key: ${formatLink("open key page", provider.keyUrl)}`);
+      const keyUrl = bestProviderUrl(provider);
+      if (keyUrl) console.log(`Create/find key: ${formatLink("open key page", keyUrl)}`);
       if (provider.docsUrl) console.log(`Docs: ${formatLink("open docs", provider.docsUrl)}`);
       if (envVarClientSafe(item.name, provider) === false && looksFrontendPublic(item.name)) {
         console.log("Warning: this looks frontend-exposed, but the provider marks it as secret.");
@@ -143,7 +163,8 @@ async function add(argv = []) {
     console.log(name);
     if (resolvedProvider) {
       console.log(`Provider: ${resolvedProvider.name}`);
-      if (resolvedProvider.keyUrl) console.log(`Create/find key: ${formatLink("open key page", resolvedProvider.keyUrl)}`);
+      const keyUrl = bestProviderUrl(resolvedProvider);
+      if (keyUrl) console.log(`Create/find key: ${formatLink("open key page", keyUrl)}`);
       if (resolvedProvider.docsUrl) console.log(`Docs: ${formatLink("open docs", resolvedProvider.docsUrl)}`);
     } else {
       console.log(`Search: ${formatLink("Google search", fallbackSearchUrl(name))}`);
@@ -181,7 +202,7 @@ async function link(argv = []) {
   const providers = await loadProviders();
   const scan = await scanProject(cwd, providers);
   const provider = providerByQuery(target, providers) || providerForEnvVar(target, providers, scan.packageNames);
-  const url = provider?.keyUrl || fallbackSearchUrl(target);
+  const url = provider ? bestProviderUrl(provider) : fallbackSearchUrl(target);
   const label = provider ? `${provider.name} key page` : `Google search for ${target}`;
 
   console.log(formatLink(label, url));
@@ -204,7 +225,7 @@ async function doctorCommand(argv = []) {
   }
   const result = await doctor(cwd, providers, { history: argv.includes("--history") || argv.includes("--full") });
   for (const check of result.checks) {
-    const icon = check.level === "ok" ? "✓" : check.level === "warn" ? "!" : "✗";
+    const icon = check.level === "ok" ? "✓" : check.level === "warn" ? "!" : check.level === "info" ? "i" : "✗";
     console.log(`${icon} ${check.message}`);
   }
   if (result.findings.length) {
@@ -327,15 +348,27 @@ async function join() {
   console.log("Decrypted locally and wrote .env");
 }
 
-async function providersCommand() {
+async function providersCommand(argv = []) {
+  const options = parseArgs(argv);
   const providers = await loadProviders();
   const table = providerTable(providers);
+  if (options.json) {
+    console.log(JSON.stringify(table, null, 2));
+    return;
+  }
   for (const row of table) {
     console.log(`${row.name}`);
     console.log(`  id: ${row.id}`);
     console.log(`  env: ${row.env.join(", ") || "(patterns only)"}`);
-    console.log(`  key: ${row.keyUrl || "(none)"}`);
+    console.log(`  key: ${row.keyUrl || row.docsUrl || "(none)"}`);
+    console.log(`  source: ${row.sourceUrl || row.docsUrl || "(none)"}`);
   }
+}
+
+async function version() {
+  const packagePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json");
+  const pkg = JSON.parse(await fs.readFile(packagePath, "utf8"));
+  console.log(pkg.version);
 }
 
 function help() {
@@ -356,6 +389,7 @@ Commands:
   example     Generate .env.example from detected env vars
   validate    Validate local .env values with providers after consent
   providers   List built-in provider links
+  version     Print the EnvHelper version
   help        Show this help
 
 Examples:
@@ -370,7 +404,32 @@ Examples:
   envhelper share --recipient age1...
   envhelper share --recipients-dir invites
   envhelper join
+  envhelper providers --json
+  envhelper --version
 `);
+}
+
+function commandHelp(name) {
+  const text = {
+    start: "Usage: envhelper start [--validate|--no-validate]\n\nScan the repo, guide local .env setup, and write non-secret .envhelper.json metadata.",
+    init: "Usage: envhelper init [--validate|--no-validate]\n\nAlias for start.",
+    setup: "Usage: envhelper setup [--validate|--no-validate]\n\nAlias for start.",
+    add: "Usage: envhelper add <provider-or-env-var> [--validate|--no-validate]\n\nAdd a provider or single env var to .env and .env.example.",
+    link: "Usage: envhelper link <provider-or-env-var> [--copy] [--open]\n\nPrint, copy, or open a source-backed provider link. Unknown providers use Google search.",
+    links: "Usage: envhelper links <provider-or-env-var> [--copy] [--open]\n\nAlias for link.",
+    doctor: "Usage: envhelper doctor [--fix] [--history|--full]\n\nCheck .env hygiene, likely leaks, frontend exposure, and optional recent git history.",
+    check: "Usage: envhelper check [--fix] [--history|--full]\n\nAlias for doctor.",
+    example: "Usage: envhelper example\n\nGenerate .env.example from detected env vars.",
+    validate: "Usage: envhelper validate\n\nValidate local .env values with providers after explicit consent.",
+    invite: "Usage: envhelper invite [--out teammate.pub]\n\nCreate or reuse a local age identity and print the public invite code.",
+    share: "Usage: envhelper share [--recipient age1...] [--recipients-file file] [--recipients-dir dir]\n\nEncrypt .env to teammate invite codes using age.",
+    rekey: "Usage: envhelper rekey [--recipient age1...] [--recipients-file file] [--recipients-dir dir]\n\nAlias for share; re-encrypts the current local .env to a fresh recipient set.",
+    join: "Usage: envhelper join\n\nDecrypt .env.team.enc locally into .env.",
+    providers: "Usage: envhelper providers [--json]\n\nList the built-in source-backed provider directory.",
+    version: "Usage: envhelper version\n\nPrint the EnvHelper version.",
+    help: "Usage: envhelper help\n\nShow the main help."
+  }[name];
+  console.log(text || "Usage: envhelper help");
 }
 
 function banner() {
@@ -450,6 +509,10 @@ function fallbackSearchUrl(name) {
   return googleSearchUrl(name);
 }
 
+function bestProviderUrl(provider) {
+  return provider?.keyUrl || provider?.docsUrl || provider?.sourceUrl || null;
+}
+
 function looksEnvVar(value) {
   return /^[A-Z][A-Z0-9_]*$/.test(value);
 }
@@ -476,6 +539,7 @@ function parseArgs(argv) {
     else if (arg === "--no-validate") options.noValidate = true;
     else if (arg === "--copy") options.copy = true;
     else if (arg === "--open") options.open = true;
+    else if (arg === "--json") options.json = true;
     else if (arg === "--out") options.out = argv[++i];
     else if (arg === "--recipients-file") options.recipientsFile = argv[++i];
     else if (arg === "--recipients-dir") options.recipientsDir = argv[++i];
@@ -532,12 +596,19 @@ function uniqueRecipients(recipients) {
 }
 
 async function prompt(question) {
+  if (!process.stdin.isTTY) return readPipedLine(question);
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   try {
     return await new Promise((resolve) => rl.question(question, resolve));
   } finally {
     rl.close();
   }
+}
+
+function readPipedLine(question) {
+  process.stdout.write(question);
+  if (!pipedInputLines) pipedInputLines = readFileSync(0, "utf8").split(/\r?\n/);
+  return pipedInputLines[pipedInputIndex++] ?? "";
 }
 
 async function promptSecret(question) {

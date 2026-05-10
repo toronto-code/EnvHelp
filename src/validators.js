@@ -2,7 +2,10 @@ export function validationForEnvVar(name, provider) {
   if (!provider) return null;
   const upper = name.toUpperCase();
   const envRule = provider.envSafety?.[upper]?.validation;
-  return envRule || provider.validation || null;
+  if (envRule) return envRule;
+  if (!provider.validation) return null;
+  if (provider.validation.env && !provider.validation.env.includes(upper)) return null;
+  return provider.validation;
 }
 
 export function canValidateEnvVar(name, provider) {

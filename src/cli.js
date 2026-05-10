@@ -6,6 +6,7 @@ import readline from "node:readline";
 
 import { decryptBundle, ensureAgeIdentity, encryptBundle, hasAge } from "./crypto-age.js";
 import { ensureEnvIgnored, parseEnvFile, upsertEnvFile, writeEnvExample } from "./envfile.js";
+import { copyText, formatLink, googleSearchUrl, openUrl } from "./links.js";
 import { envVarClientSafe, loadProviders, providerByQuery, providerForEnvVar, providerTable } from "./providers.js";
 import { doctor, scanProject } from "./scanner.js";
 import { canValidateEnvVar, validateEnvValue } from "./validators.js";
@@ -17,6 +18,8 @@ const commands = {
   init: start,
   setup: start,
   add,
+  link,
+  links: link,
   doctor: doctorCommand,
   check: doctorCommand,
   example,
@@ -76,8 +79,8 @@ async function start(argv = []) {
     console.log(item.name);
     if (provider) {
       console.log(`Provider: ${provider.name}`);
-      if (provider.keyUrl) console.log(`Create/find key: ${provider.keyUrl}`);
-      if (provider.docsUrl) console.log(`Docs: ${provider.docsUrl}`);
+      if (provider.keyUrl) console.log(`Create/find key: ${formatLink("open key page", provider.keyUrl)}`);
+      if (provider.docsUrl) console.log(`Docs: ${formatLink("open docs", provider.docsUrl)}`);
       if (envVarClientSafe(item.name, provider) === false && looksFrontendPublic(item.name)) {
         console.log("Warning: this looks frontend-exposed, but the provider marks it as secret.");
       }
@@ -86,7 +89,7 @@ async function start(argv = []) {
       }
     } else {
       console.log(`Provider: unknown`);
-      console.log(`Search: ${fallbackSearchUrl(item.name)}`);
+      console.log(`Search: ${formatLink("Google search", fallbackSearchUrl(item.name))}`);
     }
 
     const value = await promptSecret(`Paste value for ${item.name}, or leave blank to skip: `);
@@ -108,14 +111,14 @@ async function start(argv = []) {
   }
 
   await writeMetadata(cwd, scan, providers);
-  console.log("Wrote non-secret .envpack.json metadata.");
-  console.log("\nNext: run `envpack doctor` to check for leaks, or `envpack share` to encrypt for teammates.");
+  console.log("Wrote non-secret .envhelper.json metadata.");
+  console.log("\nNext: run `envhelper doctor` to check for leaks, or `envhelper share` to encrypt for teammates.");
 }
 
 async function add(argv = []) {
   const target = argv[0];
   if (!target) {
-    console.error("Usage: envpack add <provider-or-env-var>");
+    console.error("Usage: envhelper add <provider-or-env-var>");
     process.exitCode = 1;
     return;
   }
@@ -140,10 +143,10 @@ async function add(argv = []) {
     console.log(name);
     if (resolvedProvider) {
       console.log(`Provider: ${resolvedProvider.name}`);
-      if (resolvedProvider.keyUrl) console.log(`Create/find key: ${resolvedProvider.keyUrl}`);
-      if (resolvedProvider.docsUrl) console.log(`Docs: ${resolvedProvider.docsUrl}`);
+      if (resolvedProvider.keyUrl) console.log(`Create/find key: ${formatLink("open key page", resolvedProvider.keyUrl)}`);
+      if (resolvedProvider.docsUrl) console.log(`Docs: ${formatLink("open docs", resolvedProvider.docsUrl)}`);
     } else {
-      console.log(`Search: ${fallbackSearchUrl(name)}`);
+      console.log(`Search: ${formatLink("Google search", fallbackSearchUrl(name))}`);
     }
     const value = await promptSecret(`Paste value for ${name}, or leave blank to skip: `);
     if (!value.trim()) continue;
@@ -163,7 +166,32 @@ async function add(argv = []) {
   await upsertEnvFile(envPath, updates);
   await writeEnvExample(path.join(cwd, ".env.example"), Object.keys(updates));
   await mergeMetadata(cwd, Object.keys(updates), providers, scan.packageNames);
-  console.log(`\nSaved ${Object.keys(updates).length} value(s), updated .env.example, and wrote .envpack.json metadata.`);
+  console.log(`\nSaved ${Object.keys(updates).length} value(s), updated .env.example, and wrote .envhelper.json metadata.`);
+}
+
+async function link(argv = []) {
+  const target = argv[0];
+  if (!target) {
+    console.error("Usage: envhelper link <provider-or-env-var> [--copy] [--open]");
+    process.exitCode = 1;
+    return;
+  }
+
+  const options = parseArgs(argv.slice(1));
+  const providers = await loadProviders();
+  const scan = await scanProject(cwd, providers);
+  const provider = providerByQuery(target, providers) || providerForEnvVar(target, providers, scan.packageNames);
+  const url = provider?.keyUrl || fallbackSearchUrl(target);
+  const label = provider ? `${provider.name} key page` : `Google search for ${target}`;
+
+  console.log(formatLink(label, url));
+
+  if (options.copy) {
+    console.log(copyText(url) ? "Copied link to clipboard." : "Could not copy link on this system.");
+  }
+  if (options.open) {
+    console.log(openUrl(url) ? "Opened link in browser." : "Could not open link on this system.");
+  }
 }
 
 async function doctorCommand(argv = []) {
@@ -192,7 +220,7 @@ async function example() {
   const providers = await loadProviders();
   const scan = await scanProject(cwd, providers);
   if (!scan.envVars.length) {
-    console.log("No env vars detected. Add references or .envpack.json first.");
+    console.log("No env vars detected. Add references or .envhelper.json first.");
     return;
   }
   const created = await writeEnvExample(path.join(cwd, ".env.example"), scan.envVars.map((item) => item.name));
@@ -204,7 +232,7 @@ async function validateCommand() {
   const scan = await scanProject(cwd, providers);
   const envPath = path.join(cwd, ".env");
   if (!existsSync(envPath)) {
-    console.error("No .env found. Run `envpack start` first.");
+    console.error("No .env found. Run `envhelper start` first.");
     process.exitCode = 1;
     return;
   }
@@ -234,7 +262,7 @@ async function invite(argv = []) {
     return;
   }
   const identity = await ensureAgeIdentity();
-  console.log("Your EnvPack invite code:\n");
+  console.log("Your EnvHelper invite code:\n");
   console.log(identity.publicKey);
   console.log("\nSend this public code to your team lead. Keep the private identity file secret:");
   console.log(identity.identityPath);
@@ -253,7 +281,7 @@ async function share(argv = []) {
   }
   const envPath = path.join(cwd, ".env");
   if (!existsSync(envPath)) {
-    console.error("No .env file found. Run `envpack start` first.");
+    console.error("No .env file found. Run `envhelper start` first.");
     process.exitCode = 1;
     return;
   }
@@ -279,7 +307,7 @@ async function join() {
   }
   const identity = await ensureAgeIdentity({ create: false });
   if (!identity) {
-    console.error("No EnvPack identity found. Run `envpack invite` first.");
+    console.error("No EnvHelper identity found. Run `envhelper invite` first.");
     process.exitCode = 1;
     return;
   }
@@ -312,12 +340,13 @@ async function providersCommand() {
 
 function help() {
   banner();
-  console.log(`Usage: envpack <command>
+  console.log(`Usage: envhelper <command>
 
 Commands:
   start       Scan project and guide local .env setup
   setup       Alias for start
   add         Add one provider or env var to local setup
+  link        Print, copy, or open a provider key link
   doctor      Check env hygiene and likely secret leaks
   check       Alias for doctor
   invite      Create local age identity and print public invite code
@@ -330,20 +359,22 @@ Commands:
   help        Show this help
 
 Examples:
-  envpack start
-  envpack add openai
-  envpack add OPENAI_API_KEY
-  envpack doctor --fix
-  envpack invite
-  envpack invite --out alice.pub
-  envpack share --recipient age1...
-  envpack share --recipients-dir invites
-  envpack join
+  envhelper start
+  envhelper add stripe
+  envhelper add ACME_API_KEY
+  envhelper link stripe --copy
+  envhelper link ACME_API_KEY --open
+  envhelper doctor --fix
+  envhelper invite
+  envhelper invite --out alice.pub
+  envhelper share --recipient age1...
+  envhelper share --recipients-dir invites
+  envhelper join
 `);
 }
 
 function banner() {
-  console.log("EnvPack - local-first .env setup and sharing\n");
+  console.log("EnvHelper - local-first .env setup and sharing\n");
 }
 
 async function collectRecipients(argv) {
@@ -381,11 +412,11 @@ async function collectRecipients(argv) {
 async function writeMetadata(root, scan, providers) {
   const names = scan.envVars.map((item) => item.name);
   const metadata = buildMetadata(root, names, providers, scan.packageNames);
-  await fs.writeFile(path.join(root, ".envpack.json"), `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
+  await fs.writeFile(path.join(root, ".envhelper.json"), `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
 }
 
 async function mergeMetadata(root, names, providers, packageNames = []) {
-  const file = path.join(root, ".envpack.json");
+  const file = path.join(root, ".envhelper.json");
   let existing = {};
   try {
     existing = JSON.parse(await fs.readFile(file, "utf8"));
@@ -416,7 +447,7 @@ function looksFrontendPublic(name) {
 }
 
 function fallbackSearchUrl(name) {
-  return `https://duckduckgo.com/?q=${encodeURIComponent(`${name} API key env var`)}`;
+  return googleSearchUrl(name);
 }
 
 function looksEnvVar(value) {
@@ -443,6 +474,8 @@ function parseArgs(argv) {
     const arg = argv[i];
     if (arg === "--validate") options.validate = true;
     else if (arg === "--no-validate") options.noValidate = true;
+    else if (arg === "--copy") options.copy = true;
+    else if (arg === "--open") options.open = true;
     else if (arg === "--out") options.out = argv[++i];
     else if (arg === "--recipients-file") options.recipientsFile = argv[++i];
     else if (arg === "--recipients-dir") options.recipientsDir = argv[++i];
@@ -548,6 +581,6 @@ async function promptYesNo(question) {
 }
 
 function printAgeInstall() {
-  console.error("EnvPack sharing requires the `age` CLI.");
+  console.error("EnvHelper sharing requires the `age` CLI.");
   console.error("Install from https://age-encryption.org/ or with Homebrew: brew install age");
 }

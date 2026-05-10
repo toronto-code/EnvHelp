@@ -2,7 +2,7 @@
 
 ## Goals
 
-EnvPack aims to prevent common accidental leaks:
+EnvHelper aims to prevent common accidental leaks:
 
 - Sending `.env` files in chat.
 - Committing plaintext `.env` files.
@@ -12,7 +12,7 @@ EnvPack aims to prevent common accidental leaks:
 
 ## Non-Goals
 
-EnvPack cannot prevent every possible secret exposure.
+EnvHelper cannot prevent every possible secret exposure.
 
 - It cannot stop a trusted teammate from copying a key after decrypting it.
 - It cannot protect keys from malware on a user's machine.
@@ -32,7 +32,7 @@ Git/chat/cloud storage
   may carry .env.team.enc ciphertext
   must never carry plaintext .env
 
-EnvPack project
+EnvHelper project
   ships CLI code and non-secret provider metadata
   does not receive user secrets
 ```
@@ -41,7 +41,7 @@ EnvPack project
 
 ### Compromised npm Package
 
-If the published EnvPack package is compromised, malicious code could read local secrets. This is true for any CLI run on secrets. Prefer pinned versions and review changelogs for serious use.
+If the published EnvHelper package is compromised, malicious code could read local secrets. This is true for any CLI run on secrets. Prefer pinned versions and review changelogs for serious use.
 
 ### Compromised Teammate Identity
 
@@ -53,4 +53,4 @@ Git keeps old versions. Removing a recipient from the latest bundle does not era
 
 ### False Positives and Misses
 
-The scanner is a guardrail, not a proof. It can miss secrets and it can flag harmless strings. Treat `envpack doctor` as a safety check, not a complete audit.
+The scanner is a guardrail, not a proof. It can miss secrets and it can flag harmless strings. Treat `envhelper doctor` as a safety check, not a complete audit.

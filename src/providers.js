@@ -7,7 +7,7 @@ const providerPath = fileURLToPath(new URL("../providers/providers.json", import
 export async function loadProviders() {
   const raw = await fs.readFile(providerPath, "utf8");
   const builtIn = JSON.parse(raw).providers;
-  const localPath = path.join(process.cwd(), ".envpack.providers.json");
+  const localPath = path.join(process.cwd(), ".envhelper.providers.json");
   try {
     const local = JSON.parse(await fs.readFile(localPath, "utf8"));
     return mergeProviders(builtIn, local.providers || []);

@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 
 import { parseEnvFile } from "../src/envfile.js";
+import { googleSearchUrl, terminalLink } from "../src/links.js";
 import { envVarClientSafe, loadProviders, providerByQuery, providerForEnvVar } from "../src/providers.js";
 import { doctor, scanProject } from "../src/scanner.js";
 import { validateEnvValue } from "../src/validators.js";
@@ -12,7 +13,7 @@ import { validateEnvValue } from "../src/validators.js";
 test("scanProject detects env vars from common project sources", async () => {
   const root = await tempProject();
   await fs.writeFile(path.join(root, ".env.example"), "OPENAI_API_KEY=\nSUPABASE_URL=\n", "utf8");
-  await fs.writeFile(path.join(root, ".envpack.json"), JSON.stringify({ required: ["STRIPE_SECRET_KEY"] }), "utf8");
+  await fs.writeFile(path.join(root, ".envhelper.json"), JSON.stringify({ required: ["STRIPE_SECRET_KEY"] }), "utf8");
   await fs.mkdir(path.join(root, "src"));
   await fs.writeFile(
     path.join(root, "src", "app.ts"),
@@ -91,6 +92,14 @@ test("parseEnvFile handles quoted values", async () => {
   });
 });
 
+test("unknown provider fallback uses Google search", () => {
+  assert.equal(
+    googleSearchUrl("ACME_API_KEY"),
+    "https://www.google.com/search?q=ACME_API_KEY%20API%20key%20env%20var"
+  );
+  assert.equal(terminalLink("label", "https://example.com"), "https://example.com");
+});
+
 async function tempProject() {
-  return fs.mkdtemp(path.join(os.tmpdir(), "envpack-"));
+  return fs.mkdtemp(path.join(os.tmpdir(), "envhelper-"));
 }

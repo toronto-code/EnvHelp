@@ -1,17 +1,29 @@
 # Provider Directory
 
-EnvPack cannot hard-code every API provider. The provider system is layered so the common path is fast while uncommon providers still have a useful fallback.
+EnvHelper cannot hard-code every API provider. The provider system is layered so the common path is fast while uncommon providers still have a useful fallback.
 
 ## Resolution Order
 
-1. Exact environment variable match, such as `OPENAI_API_KEY`.
+1. Exact environment variable match, such as `STRIPE_SECRET_KEY`.
 2. Provider prefix or regex match, such as `^STRIPE_`.
 3. Package-name hint, only for generic variable names like `API_KEY`.
-4. Fallback search URL for unknown variables.
+4. Google search URL for unknown variables.
+
+## Links
+
+EnvHelper prints terminal-clickable links where supported. If the terminal does not support hyperlinks, EnvHelper prints the raw URL.
+
+```bash
+envhelper link stripe
+envhelper link ACME_API_KEY --copy
+envhelper link ACME_API_KEY --open
+```
+
+Known providers resolve to their key page. Unknown variables resolve to a Google search for that env var plus "API key env var".
 
 ## Validation
 
-Provider validation is optional. If a provider has a validator, EnvPack asks for consent before sending a value directly from the user's machine to that provider.
+Provider validation is optional. If a provider has a validator, EnvHelper asks for consent before sending a value directly from the user's machine to that provider.
 
 Validation can be:
 
@@ -21,7 +33,7 @@ Validation can be:
 
 ## Local Overrides
 
-Projects can add `.envpack.providers.json` to define custom providers or override built-in links.
+Projects can add `.envhelper.providers.json` to define custom providers or override built-in links.
 
 ```json
 {

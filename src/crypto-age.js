@@ -3,8 +3,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-const envpackDir = path.join(os.homedir(), ".envpack");
-const identityPath = path.join(envpackDir, "identity.txt");
+const envhelperDir = path.join(os.homedir(), ".envhelper");
+const identityPath = path.join(envhelperDir, "identity.txt");
 
 export function hasAge() {
   return spawnSync("age", ["--version"], { stdio: "ignore" }).status === 0 &&
@@ -19,7 +19,7 @@ export async function ensureAgeIdentity(options = { create: true }) {
     if (options.create === false) return null;
   }
 
-  await fs.mkdir(envpackDir, { recursive: true, mode: 0o700 });
+  await fs.mkdir(envhelperDir, { recursive: true, mode: 0o700 });
   const result = spawnSync("age-keygen", ["-o", identityPath], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"]

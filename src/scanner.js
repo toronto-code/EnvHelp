@@ -79,7 +79,7 @@ export async function scanProject(root, providers) {
   const packageNames = await readPackageNames(root);
   const envVars = new Map();
 
-  await collectEnvpackMetadata(root, envVars);
+  await collectEnvhelperMetadata(root, envVars);
   await collectEnvExample(root, envVars);
 
   for (const file of files) {
@@ -138,7 +138,7 @@ export async function doctor(root, providers, options = {}) {
       ? { level: "warn", message: `.env is missing ${missing.length} detected value(s): ${missing.map((item) => item.name).join(", ")}` }
       : { level: "ok", message: ".env has all detected values" });
   } else {
-    checks.push({ level: "warn", message: ".env not found; run envpack start" });
+    checks.push({ level: "warn", message: ".env not found; run envhelper start" });
   }
 
   checks.push(existsSync(path.join(root, ".env.team.enc"))
@@ -176,7 +176,7 @@ export async function doctor(root, providers, options = {}) {
   if (options.history) {
     findings.push(...scanGitHistory(root));
   } else {
-    checks.push({ level: "warn", message: "Git history scan skipped; run envpack doctor --history for a slower check" });
+    checks.push({ level: "warn", message: "Git history scan skipped; run envhelper doctor --history for a slower check" });
   }
 
   for (const env of scan.envVars) {
@@ -204,12 +204,13 @@ async function collectEnvExample(root, envVars) {
   }
 }
 
-async function collectEnvpackMetadata(root, envVars) {
-  const file = path.join(root, ".envpack.json");
+async function collectEnvhelperMetadata(root, envVars) {
+  const name = ".envhelper.json";
+  const file = path.join(root, name);
   if (!existsSync(file)) return;
   try {
     const metadata = JSON.parse(await fs.readFile(file, "utf8"));
-    for (const key of metadata.required || []) addEnv(envVars, key, ".envpack.json");
+    for (const key of metadata.required || []) addEnv(envVars, key, name);
   } catch {
     return;
   }

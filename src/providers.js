@@ -25,6 +25,15 @@ export function providerTable(providers) {
   }));
 }
 
+export function providerByQuery(query, providers) {
+  const normalized = query.toLowerCase();
+  return providers.find((provider) =>
+    provider.id.toLowerCase() === normalized ||
+    provider.name.toLowerCase() === normalized ||
+    (provider.aliases || []).some((alias) => alias.toLowerCase() === normalized)
+  ) || null;
+}
+
 export function providerForEnvVar(name, providers, packageNames = []) {
   const upper = name.toUpperCase();
   const exact = providers.find((provider) => (provider.env || []).includes(upper));

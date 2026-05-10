@@ -39,6 +39,23 @@ export async function upsertEnvFile(filePath, updates) {
   await fs.chmod(filePath, 0o600).catch(() => {});
 }
 
+export async function writeEnvExample(filePath, names) {
+  const unique = [...new Set(names)].sort();
+  if (!unique.length) return false;
+  if (existsSync(filePath)) {
+    const content = await fs.readFile(filePath, "utf8");
+    const existing = new Set(Object.keys(await parseEnvFile(filePath)));
+    const missing = unique.filter((name) => !existing.has(name));
+    if (!missing.length) return false;
+    const prefix = content && !content.endsWith("\n") ? "\n" : "";
+    await fs.writeFile(filePath, `${content}${prefix}${missing.map((name) => `${name}=`).join("\n")}\n`, "utf8");
+    return true;
+  }
+  const content = unique.map((name) => `${name}=`).join("\n");
+  await fs.writeFile(filePath, `${content}\n`, "utf8");
+  return true;
+}
+
 export async function ensureEnvIgnored(root) {
   const gitignorePath = path.join(root, ".gitignore");
   const needed = [".env", ".env.*", "!.env.example", "!.env.team.enc"];

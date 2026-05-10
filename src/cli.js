@@ -1,23 +1,29 @@
 #!/usr/bin/env node
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
-import { pathToFileURL } from "node:url";
 
 import { decryptBundle, ensureAgeIdentity, encryptBundle, hasAge } from "./crypto-age.js";
-import { ensureEnvIgnored, parseEnvFile, upsertEnvFile } from "./envfile.js";
-import { envVarClientSafe, loadProviders, providerForEnvVar, providerTable } from "./providers.js";
+import { ensureEnvIgnored, parseEnvFile, upsertEnvFile, writeEnvExample } from "./envfile.js";
+import { envVarClientSafe, loadProviders, providerByQuery, providerForEnvVar, providerTable } from "./providers.js";
 import { doctor, scanProject } from "./scanner.js";
+import { canValidateEnvVar, validateEnvValue } from "./validators.js";
 
 const cwd = process.cwd();
 
 const commands = {
   start,
+  init: start,
+  setup: start,
+  add,
   doctor: doctorCommand,
+  check: doctorCommand,
+  example,
+  validate: validateCommand,
   invite,
   share,
+  rekey: share,
   join,
   providers: providersCommand,
   help
@@ -34,8 +40,9 @@ if (!commands[command]) {
 
 await commands[command](args);
 
-async function start() {
+async function start(argv = []) {
   banner();
+  const options = parseArgs(argv);
   const providers = await loadProviders();
   const scan = await scanProject(cwd, providers);
 
@@ -52,6 +59,11 @@ async function start() {
   }
 
   await ensureEnvIgnored(cwd);
+  const examplePath = path.join(cwd, ".env.example");
+  if (!existsSync(examplePath)) {
+    const created = await writeEnvExample(examplePath, scan.envVars.map((item) => item.name));
+    if (created) console.log("Created .env.example with detected env vars.");
+  }
 
   const envPath = path.join(cwd, ".env");
   const existing = existsSync(envPath) ? await parseEnvFile(envPath) : {};
@@ -78,7 +90,14 @@ async function start() {
     }
 
     const value = await promptSecret(`Paste value for ${item.name}, or leave blank to skip: `);
-    if (value.trim()) updates[item.name] = value.trim();
+    if (value.trim()) {
+      const trimmed = value.trim();
+      if (shouldValidate(options, item.name, provider)) {
+        const save = await maybeValidateValue(item.name, trimmed, provider, options);
+        if (!save) continue;
+      }
+      updates[item.name] = trimmed;
+    }
   }
 
   if (Object.keys(updates).length) {
@@ -93,9 +112,69 @@ async function start() {
   console.log("\nNext: run `envpack doctor` to check for leaks, or `envpack share` to encrypt for teammates.");
 }
 
-async function doctorCommand() {
+async function add(argv = []) {
+  const target = argv[0];
+  if (!target) {
+    console.error("Usage: envpack add <provider-or-env-var>");
+    process.exitCode = 1;
+    return;
+  }
+
+  const options = parseArgs(argv.slice(1));
   const providers = await loadProviders();
-  const result = await doctor(cwd, providers);
+  const scan = await scanProject(cwd, providers);
+  const provider = providerByQuery(target, providers) || providerForEnvVar(target, providers, scan.packageNames);
+  const names = provider && !looksEnvVar(target)
+    ? await chooseProviderVars(provider)
+    : [target.toUpperCase()];
+
+  if (!names.length) return;
+  await ensureEnvIgnored(cwd);
+
+  const envPath = path.join(cwd, ".env");
+  const updates = {};
+
+  for (const name of names) {
+    const resolvedProvider = providerForEnvVar(name, providers, scan.packageNames) || provider;
+    console.log("");
+    console.log(name);
+    if (resolvedProvider) {
+      console.log(`Provider: ${resolvedProvider.name}`);
+      if (resolvedProvider.keyUrl) console.log(`Create/find key: ${resolvedProvider.keyUrl}`);
+      if (resolvedProvider.docsUrl) console.log(`Docs: ${resolvedProvider.docsUrl}`);
+    } else {
+      console.log(`Search: ${fallbackSearchUrl(name)}`);
+    }
+    const value = await promptSecret(`Paste value for ${name}, or leave blank to skip: `);
+    if (!value.trim()) continue;
+    const trimmed = value.trim();
+    if (shouldValidate(options, name, resolvedProvider)) {
+      const save = await maybeValidateValue(name, trimmed, resolvedProvider, options);
+      if (!save) continue;
+    }
+    updates[name] = trimmed;
+  }
+
+  if (!Object.keys(updates).length) {
+    console.log("No values saved.");
+    return;
+  }
+
+  await upsertEnvFile(envPath, updates);
+  await writeEnvExample(path.join(cwd, ".env.example"), Object.keys(updates));
+  await mergeMetadata(cwd, Object.keys(updates), providers, scan.packageNames);
+  console.log(`\nSaved ${Object.keys(updates).length} value(s), updated .env.example, and wrote .envpack.json metadata.`);
+}
+
+async function doctorCommand(argv = []) {
+  const providers = await loadProviders();
+  if (argv.includes("--fix")) {
+    const scan = await scanProject(cwd, providers);
+    await ensureEnvIgnored(cwd);
+    await writeEnvExample(path.join(cwd, ".env.example"), scan.envVars.map((item) => item.name));
+    console.log("Applied safe fixes: ensured .env ignore rules and .env.example where possible.\n");
+  }
+  const result = await doctor(cwd, providers, { history: argv.includes("--history") || argv.includes("--full") });
   for (const check of result.checks) {
     const icon = check.level === "ok" ? "✓" : check.level === "warn" ? "!" : "✗";
     console.log(`${icon} ${check.message}`);
@@ -109,7 +188,46 @@ async function doctorCommand() {
   if (result.exitCode) process.exitCode = result.exitCode;
 }
 
-async function invite() {
+async function example() {
+  const providers = await loadProviders();
+  const scan = await scanProject(cwd, providers);
+  if (!scan.envVars.length) {
+    console.log("No env vars detected. Add references or .envpack.json first.");
+    return;
+  }
+  const created = await writeEnvExample(path.join(cwd, ".env.example"), scan.envVars.map((item) => item.name));
+  console.log(created ? "Created .env.example" : ".env.example already exists");
+}
+
+async function validateCommand() {
+  const providers = await loadProviders();
+  const scan = await scanProject(cwd, providers);
+  const envPath = path.join(cwd, ".env");
+  if (!existsSync(envPath)) {
+    console.error("No .env found. Run `envpack start` first.");
+    process.exitCode = 1;
+    return;
+  }
+  const values = await parseEnvFile(envPath);
+  let failures = 0;
+  for (const item of scan.envVars) {
+    if (!values[item.name]) continue;
+    const provider = providerForEnvVar(item.name, providers, scan.packageNames);
+    if (!canValidateEnvVar(item.name, provider)) {
+      console.log(`! ${item.name}: no validator available`);
+      continue;
+    }
+    const ok = await promptYesNo(`Validate ${item.name} with ${provider.name}? This sends the value directly to the provider. `);
+    if (!ok) continue;
+    const result = await validateEnvValue(item.name, values[item.name], provider);
+    const icon = result.ok === true ? "✓" : result.ok === false ? "✗" : "!";
+    console.log(`${icon} ${item.name}: ${result.message}`);
+    if (result.ok === false) failures++;
+  }
+  if (failures) process.exitCode = 1;
+}
+
+async function invite(argv = []) {
   if (!hasAge()) {
     printAgeInstall();
     process.exitCode = 1;
@@ -120,9 +238,14 @@ async function invite() {
   console.log(identity.publicKey);
   console.log("\nSend this public code to your team lead. Keep the private identity file secret:");
   console.log(identity.identityPath);
+  const options = parseArgs(argv);
+  if (options.out) {
+    await fs.writeFile(path.resolve(cwd, options.out), `${identity.publicKey}\n`, "utf8");
+    console.log(`\nWrote public invite file: ${options.out}`);
+  }
 }
 
-async function share() {
+async function share(argv = []) {
   if (!hasAge()) {
     printAgeInstall();
     process.exitCode = 1;
@@ -135,7 +258,7 @@ async function share() {
     return;
   }
 
-  const recipients = await collectRecipients(args);
+  const recipients = await collectRecipients(argv);
   if (!recipients.length) {
     console.error("No invite codes provided.");
     process.exitCode = 1;
@@ -193,17 +316,28 @@ function help() {
 
 Commands:
   start       Scan project and guide local .env setup
+  setup       Alias for start
+  add         Add one provider or env var to local setup
   doctor      Check env hygiene and likely secret leaks
+  check       Alias for doctor
   invite      Create local age identity and print public invite code
   share       Encrypt .env to teammate invite codes
+  rekey       Re-encrypt .env.team.enc to a fresh recipient set
   join        Decrypt .env.team.enc locally into .env
+  example     Generate .env.example from detected env vars
+  validate    Validate local .env values with providers after consent
   providers   List built-in provider links
   help        Show this help
 
 Examples:
   envpack start
+  envpack add openai
+  envpack add OPENAI_API_KEY
+  envpack doctor --fix
   envpack invite
+  envpack invite --out alice.pub
   envpack share --recipient age1...
+  envpack share --recipients-dir invites
   envpack join
 `);
 }
@@ -214,6 +348,7 @@ function banner() {
 
 async function collectRecipients(argv) {
   const recipients = [];
+  const options = parseArgs(argv);
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--recipient" || argv[i] === "-r") {
       const value = argv[i + 1];
@@ -223,7 +358,16 @@ async function collectRecipients(argv) {
       }
     }
   }
-  if (recipients.length) return recipients;
+  if (options.recipientsFile) {
+    recipients.push(...await readRecipientsFile(path.resolve(cwd, options.recipientsFile)));
+  }
+  if (options.recipientsDir) {
+    recipients.push(...await readRecipientsDir(path.resolve(cwd, options.recipientsDir)));
+  }
+  if (!recipients.length && existsSync(path.join(cwd, "invites"))) {
+    recipients.push(...await readRecipientsDir(path.join(cwd, "invites")));
+  }
+  if (recipients.length) return uniqueRecipients(recipients);
 
   console.log("Paste teammate invite codes, one per line. Blank line to finish.");
   while (true) {
@@ -231,22 +375,40 @@ async function collectRecipients(argv) {
     if (!value.trim()) break;
     recipients.push(value.trim());
   }
-  return recipients;
+  return uniqueRecipients(recipients);
 }
 
 async function writeMetadata(root, scan, providers) {
-  const metadata = {
+  const names = scan.envVars.map((item) => item.name);
+  const metadata = buildMetadata(root, names, providers, scan.packageNames);
+  await fs.writeFile(path.join(root, ".envpack.json"), `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
+}
+
+async function mergeMetadata(root, names, providers, packageNames = []) {
+  const file = path.join(root, ".envpack.json");
+  let existing = {};
+  try {
+    existing = JSON.parse(await fs.readFile(file, "utf8"));
+  } catch {
+    existing = {};
+  }
+  const required = [...new Set([...(existing.required || []), ...names])].sort();
+  const metadata = buildMetadata(root, required, providers, packageNames);
+  await fs.writeFile(file, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
+}
+
+function buildMetadata(root, names, providers, packageNames = []) {
+  return {
     version: 1,
     project: path.basename(root),
-    required: scan.envVars.map((item) => item.name),
+    required: [...new Set(names)].sort(),
     providers: Object.fromEntries(
-      scan.envVars.map((item) => {
-        const provider = providerForEnvVar(item.name, providers, scan.packageNames);
-        return [item.name, provider?.id || null];
+      [...new Set(names)].sort().map((name) => {
+        const provider = providerForEnvVar(name, providers, packageNames);
+        return [name, provider?.id || null];
       })
     )
   };
-  await fs.writeFile(path.join(root, ".envpack.json"), `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
 }
 
 function looksFrontendPublic(name) {
@@ -255,6 +417,85 @@ function looksFrontendPublic(name) {
 
 function fallbackSearchUrl(name) {
   return `https://duckduckgo.com/?q=${encodeURIComponent(`${name} API key env var`)}`;
+}
+
+function looksEnvVar(value) {
+  return /^[A-Z][A-Z0-9_]*$/.test(value);
+}
+
+async function chooseProviderVars(provider) {
+  const names = provider.env || [];
+  if (names.length <= 1) return names;
+  console.log(`${provider.name} has multiple known env vars:`);
+  names.forEach((name, index) => console.log(`${index + 1}. ${name}`));
+  const answer = await prompt("Choose numbers separated by commas, or press enter for all: ");
+  if (!answer.trim()) return names;
+  const selected = answer
+    .split(",")
+    .map((part) => Number(part.trim()) - 1)
+    .filter((index) => Number.isInteger(index) && index >= 0 && index < names.length);
+  return [...new Set(selected.map((index) => names[index]))];
+}
+
+function parseArgs(argv) {
+  const options = { _: [] };
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--validate") options.validate = true;
+    else if (arg === "--no-validate") options.noValidate = true;
+    else if (arg === "--out") options.out = argv[++i];
+    else if (arg === "--recipients-file") options.recipientsFile = argv[++i];
+    else if (arg === "--recipients-dir") options.recipientsDir = argv[++i];
+    else options._.push(arg);
+  }
+  return options;
+}
+
+function shouldValidate(options, name, provider) {
+  if (options.noValidate) return false;
+  if (options.validate) return true;
+  return canValidateEnvVar(name, provider);
+}
+
+async function maybeValidateValue(name, value, provider, options) {
+  if (!canValidateEnvVar(name, provider)) return true;
+  const allowed = options.validate || await promptYesNo(`Validate ${name} with ${provider.name}? This sends the value directly to ${provider.name}. `);
+  if (!allowed) return true;
+  const result = await validateEnvValue(name, value, provider);
+  const icon = result.ok === true ? "✓" : result.ok === false ? "✗" : "!";
+  console.log(`${icon} ${result.message}`);
+  if (result.ok === false) {
+    const saveAnyway = await promptYesNo(`Save ${name} anyway? `);
+    if (!saveAnyway) return false;
+  }
+  return true;
+}
+
+async function readRecipientsFile(filePath) {
+  const content = await fs.readFile(filePath, "utf8");
+  return parseRecipientLines(content);
+}
+
+async function readRecipientsDir(dirPath) {
+  const entries = await fs.readdir(dirPath, { withFileTypes: true }).catch(() => []);
+  const recipients = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".pub")) continue;
+    recipients.push(...await readRecipientsFile(path.join(dirPath, entry.name)));
+  }
+  return recipients;
+}
+
+function parseRecipientLines(content) {
+  return content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"))
+    .filter((line) => line.startsWith("age1"));
+}
+
+function uniqueRecipients(recipients) {
+  return [...new Set(recipients.map((recipient) => recipient.trim()).filter(Boolean))];
 }
 
 async function prompt(question) {

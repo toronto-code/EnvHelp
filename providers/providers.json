@@ -4,6 +4,7 @@
     {
       "id": "openai",
       "name": "OpenAI",
+      "aliases": ["gpt", "chatgpt"],
       "keyUrl": "https://platform.openai.com/api-keys",
       "docsUrl": "https://platform.openai.com/docs",
       "env": ["OPENAI_API_KEY"],
@@ -12,12 +13,23 @@
       },
       "envPatterns": ["^OPENAI_"],
       "packages": ["openai"],
+      "validation": {
+        "type": "http",
+        "method": "GET",
+        "url": "https://api.openai.com/v1/models",
+        "headers": {
+          "Authorization": "Bearer {value}"
+        },
+        "okStatus": [200],
+        "success": "OpenAI accepted the key."
+      },
       "clientSafe": false,
       "notes": ["Keep server-side. Do not expose in frontend code."]
     },
     {
       "id": "anthropic",
       "name": "Anthropic",
+      "aliases": ["claude"],
       "keyUrl": "https://console.anthropic.com/settings/keys",
       "docsUrl": "https://docs.anthropic.com/",
       "env": ["ANTHROPIC_API_KEY"],
@@ -26,6 +38,17 @@
       },
       "envPatterns": ["^ANTHROPIC_"],
       "packages": ["@anthropic-ai/sdk"],
+      "validation": {
+        "type": "http",
+        "method": "GET",
+        "url": "https://api.anthropic.com/v1/models",
+        "headers": {
+          "x-api-key": "{value}",
+          "anthropic-version": "2023-06-01"
+        },
+        "okStatus": [200],
+        "success": "Anthropic accepted the key."
+      },
       "clientSafe": false,
       "notes": ["Keep server-side. Do not expose in frontend code."]
     },
@@ -42,6 +65,16 @@
       },
       "envPatterns": ["^STRIPE_"],
       "packages": ["stripe", "@stripe/stripe-js"],
+      "validation": {
+        "type": "http",
+        "method": "GET",
+        "url": "https://api.stripe.com/v1/balance",
+        "headers": {
+          "Authorization": "Bearer {value}"
+        },
+        "okStatus": [200],
+        "success": "Stripe accepted the key."
+      },
       "clientSafe": false,
       "notes": ["Publishable keys can be client-side. Secret and webhook keys must stay server-side."]
     },
@@ -52,7 +85,7 @@
       "docsUrl": "https://supabase.com/docs",
       "env": ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"],
       "envSafety": {
-        "SUPABASE_URL": { "clientSafe": true },
+        "SUPABASE_URL": { "clientSafe": true, "validation": { "type": "url", "protocol": "https:", "success": "Supabase URL looks valid." } },
         "SUPABASE_ANON_KEY": { "clientSafe": true },
         "SUPABASE_SERVICE_ROLE_KEY": { "clientSafe": false },
         "NEXT_PUBLIC_SUPABASE_URL": { "clientSafe": true },
@@ -106,6 +139,16 @@
       },
       "envPatterns": ["^RESEND_"],
       "packages": ["resend"],
+      "validation": {
+        "type": "http",
+        "method": "GET",
+        "url": "https://api.resend.com/domains",
+        "headers": {
+          "Authorization": "Bearer {value}"
+        },
+        "okStatus": [200],
+        "success": "Resend accepted the key."
+      },
       "clientSafe": false,
       "notes": ["Keep server-side."]
     },
@@ -138,12 +181,25 @@
       },
       "envPatterns": ["^GITHUB_", "^GH_"],
       "packages": ["@octokit/rest", "octokit"],
+      "validation": {
+        "type": "http",
+        "method": "GET",
+        "url": "https://api.github.com/user",
+        "headers": {
+          "Authorization": "Bearer {value}",
+          "X-GitHub-Api-Version": "2022-11-28",
+          "User-Agent": "envpack"
+        },
+        "okStatus": [200],
+        "success": "GitHub accepted the token."
+      },
       "clientSafe": false,
       "notes": ["Prefer fine-grained tokens with the smallest required scope."]
     },
     {
       "id": "google-maps",
       "name": "Google Maps Platform",
+      "aliases": ["google maps", "maps"],
       "keyUrl": "https://console.cloud.google.com/google/maps-apis/credentials",
       "docsUrl": "https://developers.google.com/maps/api-security-best-practices",
       "env": ["GOOGLE_MAPS_API_KEY", "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY", "VITE_GOOGLE_MAPS_API_KEY"],

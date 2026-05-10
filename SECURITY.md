@@ -12,7 +12,7 @@ EnvPack is designed around absence: there is no hosted backend that can receive,
 - No custom cryptography.
 - Secret values are redacted in terminal output.
 - Encryption and decryption happen locally.
-- Provider validation, when added, must send secrets only to the provider the user selected and only after explicit consent.
+- Provider validation sends secrets only to the provider the user selected and only after explicit consent.
 
 ## Encryption
 
@@ -38,7 +38,7 @@ If this happens, rotate the upstream API keys and re-run:
 envpack share
 ```
 
-A future `envpack rekey` command should automate re-encryption and rotation guidance.
+`envpack rekey` re-encrypts the current local `.env` to a fresh recipient set. It does not rewrite git history or rotate upstream provider keys for you.
 
 ## Supply Chain Note
 

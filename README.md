@@ -30,6 +30,7 @@ OPENAI_API_KEY
 Provider: OpenAI
 Create key: https://platform.openai.com/api-keys
 Paste locally: ********
+Validate with OpenAI? This sends the value directly to OpenAI. [y/N]
 Saved to .env
 ```
 
@@ -66,10 +67,31 @@ envpack start
 Scan the project, guide local `.env` setup, write non-secret `.envpack.json` metadata, and make sure `.env` is ignored.
 
 ```bash
+envpack add openai
+envpack add OPENAI_API_KEY
+```
+
+Bootstrap a provider or a single environment variable before the project has anything useful to scan. This is the solo-builder path for fresh projects.
+
+```bash
 envpack doctor
 ```
 
 Check `.env` hygiene, missing docs, likely leaked secrets, unsafe frontend usage, and encrypted bundle presence.
+
+Use safe auto-fixes:
+
+```bash
+envpack doctor --fix
+```
+
+This ensures `.env` ignore rules and creates `.env.example` from detected variables when possible.
+
+```bash
+envpack validate
+```
+
+Validate local `.env` values with providers after explicit consent. EnvPack never validates silently.
 
 ```bash
 envpack invite
@@ -78,10 +100,28 @@ envpack invite
 Generate a local `age` identity and print an invite code such as `age1...`.
 
 ```bash
+envpack invite --out alice.pub
+```
+
+Write the public invite code to a file that can be sent to a team lead.
+
+```bash
 envpack share
 ```
 
 Encrypt `.env` to one or more `age1...` invite codes using the `age` CLI.
+
+```bash
+envpack share --recipients-dir invites
+```
+
+Encrypt to every `.pub` invite file in a directory. This supports an async team flow where teammates send public invite files whenever they are ready.
+
+```bash
+envpack rekey
+```
+
+Re-encrypt `.env.team.enc` to a fresh recipient set. This does not remove old bundles from git history or rotate upstream provider keys.
 
 ```bash
 envpack join
@@ -101,8 +141,8 @@ There are too many API providers to hard-code perfectly, so EnvPack uses a layer
 
 1. Built-in curated providers for common services like OpenAI, Stripe, Supabase, Anthropic, Clerk, Resend, Twilio, Firebase, GitHub, and Google Maps.
 2. Env var and package-name patterns to infer providers from names like `OPENAI_API_KEY` or dependencies like `stripe`.
-3. A fallback search URL when EnvPack cannot identify a provider.
-4. Future community provider packs through plain JSON.
+3. Project-local overrides in `.envpack.providers.json`.
+4. A fallback search URL when EnvPack cannot identify a provider.
 
 Provider metadata is intentionally non-secret:
 
@@ -113,7 +153,12 @@ Provider metadata is intentionally non-secret:
   "keyUrl": "https://platform.openai.com/api-keys",
   "docsUrl": "https://platform.openai.com/docs",
   "env": ["OPENAI_API_KEY"],
-  "clientSafe": false
+  "clientSafe": false,
+  "validation": {
+    "type": "http",
+    "method": "GET",
+    "url": "https://api.openai.com/v1/models"
+  }
 }
 ```
 
@@ -122,6 +167,8 @@ Provider metadata is intentionally non-secret:
 EnvPack does not run a server and does not receive your secrets.
 
 Secrets are entered locally, written locally, encrypted locally, and decrypted locally. Team sharing uses [`age`](https://age-encryption.org/) instead of custom crypto.
+
+Provider validation is optional and consent-based. When you validate a key, EnvPack sends that value directly from your machine to the provider, such as OpenAI or Stripe, and never to EnvPack.
 
 Honest limitation:
 

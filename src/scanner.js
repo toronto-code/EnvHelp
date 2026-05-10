@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { parseEnvFile } from "./envfile.js";
 import { envVarClientSafe, providerForEnvVar } from "./providers.js";
 
@@ -106,10 +107,11 @@ export async function scanProject(root, providers) {
   };
 }
 
-export async function doctor(root, providers) {
+export async function doctor(root, providers, options = {}) {
   const checks = [];
   const findings = [];
   const scan = await scanProject(root, providers);
+  const envPath = path.join(root, ".env");
 
   const gitignorePath = path.join(root, ".gitignore");
   if (!existsSync(gitignorePath)) {
@@ -125,9 +127,23 @@ export async function doctor(root, providers) {
     ? { level: "ok", message: ".env.example exists" }
     : { level: "warn", message: ".env.example is missing" });
 
+  if (existsSync(envPath)) {
+    checks.push({ level: "ok", message: ".env exists locally" });
+    if (isGitTracked(root, ".env")) {
+      checks.push({ level: "fail", message: ".env is tracked by git" });
+    }
+    const values = await parseEnvFile(envPath);
+    const missing = scan.envVars.filter((item) => !values[item.name]);
+    checks.push(missing.length
+      ? { level: "warn", message: `.env is missing ${missing.length} detected value(s): ${missing.map((item) => item.name).join(", ")}` }
+      : { level: "ok", message: ".env has all detected values" });
+  } else {
+    checks.push({ level: "warn", message: ".env not found; run envpack start" });
+  }
+
   checks.push(existsSync(path.join(root, ".env.team.enc"))
     ? { level: "ok", message: ".env.team.enc exists" }
-    : { level: "warn", message: ".env.team.enc not found; run envpack share if this is a team project" });
+    : { level: "ok", message: "No team bundle found; sharing is optional" });
 
   if (scan.envVars.length) {
     checks.push({ level: "ok", message: `Detected ${scan.envVars.length} env var(s)` });
@@ -155,6 +171,12 @@ export async function doctor(root, providers) {
         }
       }
     });
+  }
+
+  if (options.history) {
+    findings.push(...scanGitHistory(root));
+  } else {
+    checks.push({ level: "warn", message: "Git history scan skipped; run envpack doctor --history for a slower check" });
   }
 
   for (const env of scan.envVars) {
@@ -280,4 +302,40 @@ function isGenericSecretCandidate(value) {
     /[_-]/.test(value)
   ].filter(Boolean).length;
   return classes >= 3;
+}
+
+function isGitTracked(root, file) {
+  const result = spawnSync("git", ["ls-files", "--error-unmatch", file], {
+    cwd: root,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"]
+  });
+  return result.status === 0;
+}
+
+function scanGitHistory(root) {
+  const result = spawnSync("git", ["log", "-p", "-n", "50", "--", "."], {
+    cwd: root,
+    encoding: "utf8",
+    maxBuffer: 10 * 1024 * 1024,
+    stdio: ["ignore", "pipe", "ignore"]
+  });
+  if (result.status !== 0 || !result.stdout) return [];
+  const findings = [];
+  const lines = result.stdout.split(/\r?\n/);
+  lines.forEach((line, index) => {
+    if (!line.startsWith("+")) return;
+    for (const item of secretPatterns) {
+      for (const match of line.matchAll(item.pattern)) {
+        if (item.id === "generic" && (!isHighEntropy(match[0]) || !isGenericSecretCandidate(match[0]))) continue;
+        findings.push({
+          file: "git history",
+          line: index + 1,
+          message: `possible ${item.id} secret in recent git history (redacted)`
+        });
+        break;
+      }
+    }
+  });
+  return findings.slice(0, 50);
 }

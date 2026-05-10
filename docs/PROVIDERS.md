@@ -9,6 +9,16 @@ EnvPack cannot hard-code every API provider. The provider system is layered so t
 3. Package-name hint, only for generic variable names like `API_KEY`.
 4. Fallback search URL for unknown variables.
 
+## Validation
+
+Provider validation is optional. If a provider has a validator, EnvPack asks for consent before sending a value directly from the user's machine to that provider.
+
+Validation can be:
+
+- `url`: local URL parsing, no network request.
+- `format`: local regex check, no network request.
+- `http`: provider API request, with the secret sent only to that provider.
+
 ## Local Overrides
 
 Projects can add `.envpack.providers.json` to define custom providers or override built-in links.
@@ -25,6 +35,16 @@ Projects can add `.envpack.providers.json` to define custom providers or overrid
       "envPatterns": ["^MY_PROVIDER_"],
       "packages": ["my-provider-sdk"],
       "clientSafe": false,
+      "validation": {
+        "type": "http",
+        "method": "GET",
+        "url": "https://example.com/v1/me",
+        "headers": {
+          "Authorization": "Bearer {value}"
+        },
+        "okStatus": [200],
+        "success": "My Provider accepted the key."
+      },
       "envSafety": {
         "MY_PROVIDER_API_KEY": { "clientSafe": false }
       },

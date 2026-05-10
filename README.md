@@ -1,0 +1,130 @@
+# EnvPack
+
+Stop sending `.env` files in chat.
+
+EnvPack is a local-first CLI for setting up, checking, and safely sharing environment variables. It helps solo developers figure out what keys a project needs and where to get them, then adds an encrypted sharing flow for teams.
+
+No accounts. No hosted vault. No plaintext secret sharing.
+
+## What It Does
+
+```bash
+npx envpack start
+```
+
+EnvPack scans the current repo for environment variables from `.env.example`, README snippets, JavaScript/TypeScript, Python, Ruby, and common framework patterns like `import.meta.env.X`.
+
+Maintainers can also commit non-secret metadata:
+
+```json
+{
+  "version": 1,
+  "required": ["OPENAI_API_KEY", "SUPABASE_URL"]
+}
+```
+
+It then guides you through missing values:
+
+```txt
+OPENAI_API_KEY
+Provider: OpenAI
+Create key: https://platform.openai.com/api-keys
+Paste locally: ********
+Saved to .env
+```
+
+For teams:
+
+```bash
+npx envpack invite
+```
+
+This creates a local `age` identity and prints a public invite code. Public invite codes are safe to send to a teammate.
+
+```bash
+npx envpack share
+```
+
+The team lead encrypts `.env` to teammate invite codes and creates:
+
+```txt
+.env.team.enc
+```
+
+Teammates decrypt locally:
+
+```bash
+npx envpack join
+```
+
+## Commands
+
+```bash
+envpack start
+```
+
+Scan the project, guide local `.env` setup, write non-secret `.envpack.json` metadata, and make sure `.env` is ignored.
+
+```bash
+envpack doctor
+```
+
+Check `.env` hygiene, missing docs, likely leaked secrets, unsafe frontend usage, and encrypted bundle presence.
+
+```bash
+envpack invite
+```
+
+Generate a local `age` identity and print an invite code such as `age1...`.
+
+```bash
+envpack share
+```
+
+Encrypt `.env` to one or more `age1...` invite codes using the `age` CLI.
+
+```bash
+envpack join
+```
+
+Decrypt `.env.team.enc` locally into `.env`.
+
+```bash
+envpack providers
+```
+
+Show the built-in provider directory.
+
+## Provider Links
+
+There are too many API providers to hard-code perfectly, so EnvPack uses a layered provider directory:
+
+1. Built-in curated providers for common services like OpenAI, Stripe, Supabase, Anthropic, Clerk, Resend, Twilio, Firebase, GitHub, and Google Maps.
+2. Env var and package-name patterns to infer providers from names like `OPENAI_API_KEY` or dependencies like `stripe`.
+3. A fallback search URL when EnvPack cannot identify a provider.
+4. Future community provider packs through plain JSON.
+
+Provider metadata is intentionally non-secret:
+
+```json
+{
+  "id": "openai",
+  "name": "OpenAI",
+  "keyUrl": "https://platform.openai.com/api-keys",
+  "docsUrl": "https://platform.openai.com/docs",
+  "env": ["OPENAI_API_KEY"],
+  "clientSafe": false
+}
+```
+
+## Security Model
+
+EnvPack does not run a server and does not receive your secrets.
+
+Secrets are entered locally, written locally, encrypted locally, and decrypted locally. Team sharing uses [`age`](https://age-encryption.org/) instead of custom crypto.
+
+Honest limitation:
+
+> Once a teammate decrypts the bundle, they have the real API key. EnvPack prevents accidental leaking during setup and sharing; it cannot stop a trusted teammate from intentionally copying the key.
+
+Read [SECURITY.md](./SECURITY.md) and [THREAT_MODEL.md](./THREAT_MODEL.md) for the design rules.

@@ -1,0 +1,222 @@
+{
+  "version": 1,
+  "providers": [
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "keyUrl": "https://platform.openai.com/api-keys",
+      "docsUrl": "https://platform.openai.com/docs",
+      "env": ["OPENAI_API_KEY"],
+      "envSafety": {
+        "OPENAI_API_KEY": { "clientSafe": false }
+      },
+      "envPatterns": ["^OPENAI_"],
+      "packages": ["openai"],
+      "clientSafe": false,
+      "notes": ["Keep server-side. Do not expose in frontend code."]
+    },
+    {
+      "id": "anthropic",
+      "name": "Anthropic",
+      "keyUrl": "https://console.anthropic.com/settings/keys",
+      "docsUrl": "https://docs.anthropic.com/",
+      "env": ["ANTHROPIC_API_KEY"],
+      "envSafety": {
+        "ANTHROPIC_API_KEY": { "clientSafe": false }
+      },
+      "envPatterns": ["^ANTHROPIC_"],
+      "packages": ["@anthropic-ai/sdk"],
+      "clientSafe": false,
+      "notes": ["Keep server-side. Do not expose in frontend code."]
+    },
+    {
+      "id": "stripe",
+      "name": "Stripe",
+      "keyUrl": "https://dashboard.stripe.com/apikeys",
+      "docsUrl": "https://docs.stripe.com/keys",
+      "env": ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET"],
+      "envSafety": {
+        "STRIPE_SECRET_KEY": { "clientSafe": false },
+        "STRIPE_PUBLISHABLE_KEY": { "clientSafe": true },
+        "STRIPE_WEBHOOK_SECRET": { "clientSafe": false }
+      },
+      "envPatterns": ["^STRIPE_"],
+      "packages": ["stripe", "@stripe/stripe-js"],
+      "clientSafe": false,
+      "notes": ["Publishable keys can be client-side. Secret and webhook keys must stay server-side."]
+    },
+    {
+      "id": "supabase",
+      "name": "Supabase",
+      "keyUrl": "https://supabase.com/dashboard/project/_/settings/api",
+      "docsUrl": "https://supabase.com/docs",
+      "env": ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"],
+      "envSafety": {
+        "SUPABASE_URL": { "clientSafe": true },
+        "SUPABASE_ANON_KEY": { "clientSafe": true },
+        "SUPABASE_SERVICE_ROLE_KEY": { "clientSafe": false },
+        "NEXT_PUBLIC_SUPABASE_URL": { "clientSafe": true },
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY": { "clientSafe": true }
+      },
+      "envPatterns": ["^SUPABASE_", "^NEXT_PUBLIC_SUPABASE_"],
+      "packages": ["@supabase/supabase-js"],
+      "clientSafe": true,
+      "notes": ["Anon keys may be public. Service role keys must stay server-side."]
+    },
+    {
+      "id": "firebase",
+      "name": "Firebase",
+      "keyUrl": "https://console.firebase.google.com/",
+      "docsUrl": "https://firebase.google.com/docs/projects/api-keys",
+      "env": ["FIREBASE_API_KEY", "VITE_FIREBASE_API_KEY", "NEXT_PUBLIC_FIREBASE_API_KEY"],
+      "envSafety": {
+        "FIREBASE_API_KEY": { "clientSafe": true },
+        "VITE_FIREBASE_API_KEY": { "clientSafe": true },
+        "NEXT_PUBLIC_FIREBASE_API_KEY": { "clientSafe": true }
+      },
+      "envPatterns": ["FIREBASE_"],
+      "packages": ["firebase", "firebase-admin"],
+      "clientSafe": true,
+      "notes": ["Firebase web API keys identify a project; still use security rules correctly."]
+    },
+    {
+      "id": "clerk",
+      "name": "Clerk",
+      "keyUrl": "https://dashboard.clerk.com/last-active?path=api-keys",
+      "docsUrl": "https://clerk.com/docs/deployments/clerk-environment-variables",
+      "env": ["CLERK_SECRET_KEY", "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "VITE_CLERK_PUBLISHABLE_KEY"],
+      "envSafety": {
+        "CLERK_SECRET_KEY": { "clientSafe": false },
+        "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY": { "clientSafe": true },
+        "VITE_CLERK_PUBLISHABLE_KEY": { "clientSafe": true }
+      },
+      "envPatterns": ["CLERK_"],
+      "packages": ["@clerk/nextjs", "@clerk/clerk-react"],
+      "clientSafe": false,
+      "notes": ["Publishable keys are client-side. CLERK_SECRET_KEY must stay server-side."]
+    },
+    {
+      "id": "resend",
+      "name": "Resend",
+      "keyUrl": "https://resend.com/api-keys",
+      "docsUrl": "https://resend.com/docs",
+      "env": ["RESEND_API_KEY"],
+      "envSafety": {
+        "RESEND_API_KEY": { "clientSafe": false }
+      },
+      "envPatterns": ["^RESEND_"],
+      "packages": ["resend"],
+      "clientSafe": false,
+      "notes": ["Keep server-side."]
+    },
+    {
+      "id": "twilio",
+      "name": "Twilio",
+      "keyUrl": "https://console.twilio.com/us1/account/keys-credentials/api-keys",
+      "docsUrl": "https://www.twilio.com/docs/iam/api-keys",
+      "env": ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_API_KEY", "TWILIO_API_SECRET"],
+      "envSafety": {
+        "TWILIO_ACCOUNT_SID": { "clientSafe": false },
+        "TWILIO_AUTH_TOKEN": { "clientSafe": false },
+        "TWILIO_API_KEY": { "clientSafe": false },
+        "TWILIO_API_SECRET": { "clientSafe": false }
+      },
+      "envPatterns": ["^TWILIO_"],
+      "packages": ["twilio"],
+      "clientSafe": false,
+      "notes": ["Auth token and API secrets must stay server-side."]
+    },
+    {
+      "id": "github",
+      "name": "GitHub",
+      "keyUrl": "https://github.com/settings/tokens",
+      "docsUrl": "https://docs.github.com/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens",
+      "env": ["GITHUB_TOKEN", "GH_TOKEN"],
+      "envSafety": {
+        "GITHUB_TOKEN": { "clientSafe": false },
+        "GH_TOKEN": { "clientSafe": false }
+      },
+      "envPatterns": ["^GITHUB_", "^GH_"],
+      "packages": ["@octokit/rest", "octokit"],
+      "clientSafe": false,
+      "notes": ["Prefer fine-grained tokens with the smallest required scope."]
+    },
+    {
+      "id": "google-maps",
+      "name": "Google Maps Platform",
+      "keyUrl": "https://console.cloud.google.com/google/maps-apis/credentials",
+      "docsUrl": "https://developers.google.com/maps/api-security-best-practices",
+      "env": ["GOOGLE_MAPS_API_KEY", "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY", "VITE_GOOGLE_MAPS_API_KEY"],
+      "envSafety": {
+        "GOOGLE_MAPS_API_KEY": { "clientSafe": true },
+        "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY": { "clientSafe": true },
+        "VITE_GOOGLE_MAPS_API_KEY": { "clientSafe": true }
+      },
+      "envPatterns": ["GOOGLE_MAPS_"],
+      "packages": ["@googlemaps/js-api-loader"],
+      "clientSafe": true,
+      "notes": ["Restrict keys by HTTP referrer, API, or IP where possible."]
+    },
+    {
+      "id": "neon",
+      "name": "Neon",
+      "keyUrl": "https://console.neon.tech/app/projects",
+      "docsUrl": "https://neon.tech/docs",
+      "env": ["DATABASE_URL", "POSTGRES_URL", "NEON_API_KEY"],
+      "envSafety": {
+        "DATABASE_URL": { "clientSafe": false },
+        "POSTGRES_URL": { "clientSafe": false },
+        "NEON_API_KEY": { "clientSafe": false }
+      },
+      "envPatterns": ["^NEON_", "^POSTGRES_", "^DATABASE_URL$"],
+      "packages": ["@neondatabase/serverless"],
+      "clientSafe": false,
+      "notes": ["Database URLs must stay server-side unless explicitly designed otherwise."]
+    },
+    {
+      "id": "vercel",
+      "name": "Vercel",
+      "keyUrl": "https://vercel.com/account/tokens",
+      "docsUrl": "https://vercel.com/docs/accounts/create-a-token",
+      "env": ["VERCEL_TOKEN"],
+      "envSafety": {
+        "VERCEL_TOKEN": { "clientSafe": false }
+      },
+      "envPatterns": ["^VERCEL_"],
+      "packages": ["vercel"],
+      "clientSafe": false,
+      "notes": ["Keep tokens server-side."]
+    },
+    {
+      "id": "pinecone",
+      "name": "Pinecone",
+      "keyUrl": "https://app.pinecone.io/",
+      "docsUrl": "https://docs.pinecone.io/guides/projects/manage-api-keys",
+      "env": ["PINECONE_API_KEY"],
+      "envSafety": {
+        "PINECONE_API_KEY": { "clientSafe": false }
+      },
+      "envPatterns": ["^PINECONE_"],
+      "packages": ["@pinecone-database/pinecone"],
+      "clientSafe": false,
+      "notes": ["Keep server-side."]
+    },
+    {
+      "id": "auth0",
+      "name": "Auth0",
+      "keyUrl": "https://manage.auth0.com/dashboard/",
+      "docsUrl": "https://auth0.com/docs/get-started/applications/application-settings",
+      "env": ["AUTH0_SECRET", "AUTH0_CLIENT_ID", "AUTH0_CLIENT_SECRET", "AUTH0_ISSUER_BASE_URL"],
+      "envSafety": {
+        "AUTH0_SECRET": { "clientSafe": false },
+        "AUTH0_CLIENT_ID": { "clientSafe": true },
+        "AUTH0_CLIENT_SECRET": { "clientSafe": false },
+        "AUTH0_ISSUER_BASE_URL": { "clientSafe": true }
+      },
+      "envPatterns": ["^AUTH0_"],
+      "packages": ["@auth0/nextjs-auth0", "auth0"],
+      "clientSafe": false,
+      "notes": ["Client IDs may be public. Client secrets must stay server-side."]
+    }
+  ]
+}

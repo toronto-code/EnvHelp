@@ -114,7 +114,22 @@ async function start(argv = []) {
     }
     printOptionalPreview(enriched, options, "start");
   } else {
-    const optionalMissing = enriched.filter((item) => item.kind === "optional credential" && item.status !== "set");
+    const optionalMissing = enriched.filter((item) =>
+      item.kind === "optional credential" &&
+      item.status !== "set" &&
+      shouldIncludeOptional(item, options)
+    );
+    const unknownOptionalMissing = enriched.filter((item) =>
+      item.kind === "optional credential" &&
+      item.status !== "set" &&
+      !item.provider
+    ).length;
+    const templateOptionalMissing = enriched.filter((item) =>
+      item.kind === "optional credential" &&
+      item.status !== "set" &&
+      item.provider &&
+      isTemplateOnly(item)
+    ).length;
     console.log("Nothing missing in the current setup scope.");
     if (!options.optional && !options.all && optionalMissing.length && process.stdin.isTTY) {
       printOptionalPreview(enriched, options, "start");
@@ -133,6 +148,12 @@ async function start(argv = []) {
     }
     if (!setupItems.length && optionalMissing.length) {
       console.log(`Found ${optionalMissing.length} optional missing credential(s). Run \`envhelper start --optional\` to fill them.`);
+    }
+    if (!setupItems.length && unknownOptionalMissing) {
+      console.log(`Hidden: ${unknownOptionalMissing} unknown optional credential(s). Add \`--unknown\` if you really want those too.`);
+    }
+    if (!setupItems.length && templateOptionalMissing) {
+      console.log(`Hidden: ${templateOptionalMissing} template-only optional credential(s). Add \`--template\` to include them.`);
     }
     if (!setupItems.length) console.log("Run `envhelper needs --all` to inspect optional/default/config values.");
   }
@@ -280,7 +301,7 @@ async function needsCommand(argv = []) {
   }
 
   if (!visibleRows.length) {
-    const optionalCount = rows.filter((row) => row.kind === "optional credential" && row.status !== "set").length;
+    const optionalCount = rows.filter((row) => row.kind === "optional credential" && row.status !== "set" && shouldIncludeOptional(row, options)).length;
     console.log(`Found ${rows.length} env var(s), but none look required for setup.`);
     if (optionalCount) {
       console.log(`There are ${optionalCount} optional missing credential(s).`);
@@ -429,10 +450,9 @@ async function share(argv = []) {
     return;
   }
 
-  const recipients = await collectRecipients(argv);
+  const recipients = await collectRecipients(argv, { interactive: options.interactive });
   if (!recipients.length) {
-    console.error("No invite codes provided.");
-    process.exitCode = 1;
+    await printShareNextStep(argv);
     return;
   }
 
@@ -521,11 +541,11 @@ function help() {
 
 function commandHelp(name) {
   const text = {
-    start: "Usage: envhelper start [--optional|--all] [--validate|--no-validate]\n\nScan the repo and guide setup for required credentials. Use --optional for optional blank credentials or --all for every variable.",
+    start: "Usage: envhelper start [--optional|--all] [--unknown] [--template] [--validate|--no-validate]\n\nScan the repo and guide setup for required credentials. Use --optional for optional known-provider credentials that are referenced outside the template, --template for template-only optional credentials, --unknown to include unknown optional credentials, or --all for every variable.",
     init: "Usage: envhelper init [--optional|--all] [--validate|--no-validate]\n\nAlias for start.",
     setup: "Usage: envhelper setup [--optional|--all] [--validate|--no-validate]\n\nAlias for start.",
-    needs: "Usage: envhelper needs [--optional|--all] [--show-set] [--verbose] [--json]\n\nShow missing required credentials and where to get them. Use --optional for optional blank credentials, --all for config values too, --show-set to include values already present in .env, or --verbose to show source files.",
-    scan: "Usage: envhelper scan [--optional|--all] [--show-set] [--verbose] [--json]\n\nAlias for needs.",
+    needs: "Usage: envhelper needs [--optional|--all] [--unknown] [--template] [--show-set] [--verbose] [--json]\n\nShow missing required credentials and where to get them. Use --optional for optional known-provider credentials referenced outside the template, --template for template-only optional credentials, --unknown to include unknown optional credentials, --all for config values too, --show-set to include values already present in .env, or --verbose to show source files.",
+    scan: "Usage: envhelper scan [--optional|--all] [--unknown] [--template] [--show-set] [--verbose] [--json]\n\nAlias for needs.",
     add: "Usage: envhelper add <provider-or-env-var> [--validate|--no-validate]\n\nAdd a provider or single env var to .env and .env.example.",
     link: "Usage: envhelper link <provider-or-env-var> [--copy] [--open]\n\nPrint, copy, or open a source-backed provider link. Unknown providers use Google search.",
     links: "Usage: envhelper links <provider-or-env-var> [--copy] [--open]\n\nAlias for link.",
@@ -534,7 +554,7 @@ function commandHelp(name) {
     example: "Usage: envhelper example\n\nGenerate .env.example from detected env vars.",
     validate: "Usage: envhelper validate\n\nValidate local .env values with providers after explicit consent.",
     invite: "Usage: envhelper invite [--out teammate.pub]\n\nCreate or reuse a local age identity and print the public invite code.",
-    share: "Usage: envhelper share [--out teammate.pub] [--recipient age1...] [--recipients-file file] [--recipients-dir dir] [--join]\n\nSmart sharing command. With .env it encrypts for teammates. With .env.team.enc it decrypts locally. With neither, it creates your invite code.",
+    share: "Usage: envhelper share [--out teammate.pub] [--recipient age1...] [--recipients-file file] [--recipients-dir dir] [--interactive] [--join]\n\nSmart sharing command. Without recipients it explains the flow and prints your invite code. With recipient codes it encrypts .env. With .env.team.enc it decrypts locally.",
     rekey: "Usage: envhelper rekey [--recipient age1...] [--recipients-file file] [--recipients-dir dir]\n\nAlias for share; re-encrypts the current local .env to a fresh recipient set.",
     join: "Usage: envhelper join\n\nDecrypt .env.team.enc locally into .env.",
     providers: "Usage: envhelper providers [--json]\n\nList the built-in source-backed provider directory.",
@@ -550,9 +570,22 @@ function banner() {
   console.log("EnvHelper - local-first .env setup and sharing\n");
 }
 
-async function collectRecipients(argv) {
+async function printShareNextStep(argv = []) {
+  console.log("Sharing needs one public invite code from each teammate.");
+  console.log("Ask each teammate to run:");
+  console.log("  envhelper invite");
+  console.log("\nThen encrypt your .env with:");
+  console.log("  envhelper share --recipient age1...");
+  console.log("\nOr put teammate .pub files in ./invites and run:");
+  console.log("  envhelper share");
+  console.log("\nIf someone else is sharing with you, send them your invite code:");
+  console.log("");
+  await invite(argv);
+}
+
+async function collectRecipients(argv, options = {}) {
   const recipients = [];
-  const options = parseArgs(argv);
+  const parsed = parseArgs(argv);
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--recipient" || argv[i] === "-r") {
       const value = argv[i + 1];
@@ -562,16 +595,17 @@ async function collectRecipients(argv) {
       }
     }
   }
-  if (options.recipientsFile) {
-    recipients.push(...await readRecipientsFile(path.resolve(cwd, options.recipientsFile)));
+  if (parsed.recipientsFile) {
+    recipients.push(...await readRecipientsFile(path.resolve(cwd, parsed.recipientsFile)));
   }
-  if (options.recipientsDir) {
-    recipients.push(...await readRecipientsDir(path.resolve(cwd, options.recipientsDir)));
+  if (parsed.recipientsDir) {
+    recipients.push(...await readRecipientsDir(path.resolve(cwd, parsed.recipientsDir)));
   }
   if (!recipients.length && existsSync(path.join(cwd, "invites"))) {
     recipients.push(...await readRecipientsDir(path.join(cwd, "invites")));
   }
   if (recipients.length) return uniqueRecipients(recipients);
+  if (!options.interactive) return [];
 
   console.log("Paste teammate invite codes, one per line. Blank line to finish.");
   while (true) {
@@ -646,14 +680,30 @@ function enrichEnvVars(scan, providers) {
 
 function filterEnvRows(rows, options) {
   if (options.all) return rows;
-  if (options.optional) return rows.filter((row) => row.kind === "required credential" || row.kind === "optional credential");
+  if (options.optional) {
+    return rows.filter((row) =>
+      row.kind === "required credential" ||
+      (row.kind === "optional credential" && shouldIncludeOptional(row, options))
+    );
+  }
   return rows.filter((row) => row.kind === "required credential");
+}
+
+function shouldIncludeOptional(row, options) {
+  if (!options.unknown && !row.provider) return false;
+  if (!options.template && isTemplateOnly(row)) return false;
+  return true;
+}
+
+function isTemplateOnly(row) {
+  const sources = row.sources || [];
+  return sources.length > 0 && sources.every((source) => source === ".env.example" || source === ".envhelper.json");
 }
 
 function printOptionalPreview(rows, options, command) {
   if (options.optional || options.all) return;
   const optional = rows
-    .filter((row) => row.kind === "optional credential" && row.status !== "set")
+    .filter((row) => row.kind === "optional credential" && row.status !== "set" && shouldIncludeOptional(row, options))
     .sort((left, right) => providerRank(left) - providerRank(right) || left.name.localeCompare(right.name));
   if (!optional.length) return;
   const shown = optional.slice(0, 5);
@@ -663,6 +713,10 @@ function printOptionalPreview(rows, options, command) {
   }
   if (optional.length > shown.length) console.log(`- ...and ${optional.length - shown.length} more`);
   console.log(`Run \`envhelper ${command} --optional\` to include these.`);
+  const unknownCount = rows.filter((row) => row.kind === "optional credential" && row.status !== "set" && !row.provider).length;
+  if (unknownCount) console.log(`Hidden: ${unknownCount} unknown optional credential(s). Add \`--unknown\` if you really want those too.`);
+  const templateCount = rows.filter((row) => row.kind === "optional credential" && row.status !== "set" && row.provider && isTemplateOnly(row)).length;
+  if (templateCount) console.log(`Hidden: ${templateCount} template-only optional credential(s). Add \`--template\` to include them.`);
 }
 
 function needsHeading(options, missingCount, setCount) {
@@ -753,6 +807,9 @@ function parseArgs(argv) {
     else if (arg === "--json") options.json = true;
     else if (arg === "--show-set") options.showSet = true;
     else if (arg === "--verbose") options.verbose = true;
+    else if (arg === "--unknown") options.unknown = true;
+    else if (arg === "--template") options.template = true;
+    else if (arg === "--interactive") options.interactive = true;
     else if (arg === "--invite") options.invite = true;
     else if (arg === "--join") options.join = true;
     else if (arg === "--all" || arg === "-all") options.all = true;

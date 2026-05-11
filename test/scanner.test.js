@@ -88,11 +88,15 @@ test("provider metadata resolves common keys and safety flags", async () => {
   const stripe = providerForEnvVar("STRIPE_PUBLISHABLE_KEY", providers);
   const supabase = providerForEnvVar("SUPABASE_SERVICE_ROLE_KEY", providers);
   const groq = providerForEnvVar("GROQ_API_KEY", providers);
+  const jira = providerForEnvVar("JIRA_TOKEN", providers);
+  const slack = providerForEnvVar("SLACK_TOKEN", providers);
 
   assert.equal(openai.name, "OpenAI");
   assert.equal(providerByQuery("gpt", providers).name, "OpenAI");
   assert.equal(stripe.name, "Stripe");
   assert.equal(groq.name, "Groq");
+  assert.equal(jira.name, "Jira");
+  assert.equal(slack.name, "Slack");
   assert.equal(providerForEnvVar("OPENAI_DEFAULT_MODEL", providers), null);
   assert.equal(providerForEnvVar("GITHUB_ALLOWED_WRITE_PATHS", providers), null);
   assert.equal(providerForEnvVar("GITHUB_WEBHOOK_SECRET", providers).name, "GitHub");

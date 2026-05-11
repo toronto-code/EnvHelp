@@ -31,11 +31,15 @@ test("cli needs reports missing and set env vars", async () => {
       "SUPABASE_URL=",
       "# OpenAI is optional. If unset, the app falls back to mock responses.",
       "OPENAI_API_KEY=",
+      "# Optional. Falls back to local mode.",
+      "ACME_API_KEY=",
       "API_URL=",
       "OPENAI_DEFAULT_MODEL="
     ].join("\n"),
     "utf8"
   );
+  await fs.mkdir(path.join(root, "src"));
+  await fs.writeFile(path.join(root, "src", "app.js"), "process.env.OPENAI_API_KEY;\n", "utf8");
   await fs.writeFile(path.join(root, ".env"), "SUPABASE_URL=https://demo.supabase.co\n", "utf8");
 
   const output = runCli(["needs"], { cwd: root });
@@ -55,6 +59,10 @@ test("cli needs reports missing and set env vars", async () => {
 
   const optional = runCli(["needs", "--optional"], { cwd: root });
   assert.match(optional, /OPENAI_API_KEY \(optional credential, OpenAI\)/);
+  assert.doesNotMatch(optional, /ACME_API_KEY/);
+
+  const optionalUnknown = runCli(["needs", "--optional", "--unknown", "--template"], { cwd: root });
+  assert.match(optionalUnknown, /ACME_API_KEY \(optional credential, unknown\)/);
 
   const all = runCli(["needs", "--all"], { cwd: root });
   assert.match(all, /API_URL \(config, unknown\)/);
@@ -110,6 +118,24 @@ test("cli smart share encrypts and decrypts with age when available", async () =
   runCli(["share"], { cwd: teammateRepo, home: teammateHome });
   const decrypted = await fs.readFile(path.join(teammateRepo, ".env"), "utf8");
   assert.match(decrypted, /OPENAI_API_KEY=shared-openai-test/);
+});
+
+test("cli share without recipients explains invite flow and prints own invite", async () => {
+  if (!hasAge()) return;
+
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), "envhelper-share-help-"));
+  const home = path.join(base, "home");
+  const repo = path.join(base, "repo");
+  await fs.mkdir(home, { recursive: true });
+  await fs.mkdir(repo, { recursive: true });
+  await fs.writeFile(path.join(repo, ".env"), "OPENAI_API_KEY=local-only\n", "utf8");
+
+  const output = runCli(["share"], { cwd: repo, home });
+
+  assert.match(output, /Sharing needs one public invite code/);
+  assert.match(output, /envhelper invite/);
+  assert.match(output, /^age1/m);
+  await assert.rejects(fs.access(path.join(repo, ".env.team.enc")));
 });
 
 function hasAge() {

@@ -42,6 +42,8 @@ npx envhelper share
 
 If you do not have `.env` yet, this creates a local `age` identity and prints a public invite code. Public invite codes are safe to send to a teammate.
 
+If you do have `.env` but have not provided teammate invite codes yet, EnvHelper explains the flow and prints your own invite code instead of dropping into an unexplained prompt.
+
 ```bash
 npx envhelper share --recipients-dir invites
 ```
@@ -85,7 +87,7 @@ envhelper needs --all
 
 Show required credentials, whether each one is set locally, the likely provider, the source files, and the best known key link.
 
-By default, EnvHelper hides values that are already set and only shows what still needs action. Use `--show-set` to include already-set values, `--optional` to include blank credentials that the repo template marks optional/fallback-backed, and `--all` to include ordinary config values like ports, feature flags, defaults, and internal URLs. Add `--verbose` when you want source-file detail. `-optional` and `-all` are accepted as forgiving aliases.
+By default, EnvHelper hides values that are already set and only shows what still needs action. Use `--show-set` to include already-set values and `--optional` to include blank known-provider credentials that are referenced outside the template. Add `--template` for optional values that only appear in `.env.example`, and `--unknown` when you also want unknown optional credentials. Use `--all` to include ordinary config values like ports, feature flags, defaults, and internal URLs. Add `--verbose` when you want source-file detail. `-optional` and `-all` are accepted as forgiving aliases.
 
 ```bash
 envhelper add stripe
@@ -138,7 +140,7 @@ Write the public invite code to a file that can be sent to a team lead.
 envhelper share
 ```
 
-Encrypt `.env` to one or more `age1...` invite codes using the `age` CLI.
+With no recipients, explain the sharing flow and print your own invite code. With recipients, encrypt `.env` to one or more `age1...` invite codes using the `age` CLI.
 
 ```bash
 envhelper share --recipients-dir invites

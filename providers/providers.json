@@ -314,6 +314,24 @@
       "notes": ["Prefer fine-grained tokens with the smallest required scope."]
     },
     {
+      "id": "jira",
+      "name": "Jira",
+      "aliases": ["atlassian"],
+      "keyUrl": "https://id.atlassian.com/manage-profile/security/api-tokens",
+      "docsUrl": "https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/",
+      "sourceUrl": "https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/",
+      "sourceKind": "official-docs",
+      "env": ["JIRA_API_TOKEN", "JIRA_TOKEN", "ATLASSIAN_API_TOKEN"],
+      "envSafety": {
+        "JIRA_API_TOKEN": { "clientSafe": false },
+        "JIRA_TOKEN": { "clientSafe": false },
+        "ATLASSIAN_API_TOKEN": { "clientSafe": false }
+      },
+      "envPatterns": ["^JIRA_.*TOKEN$", "^ATLASSIAN_.*TOKEN$"],
+      "clientSafe": false,
+      "notes": ["Jira Cloud API tokens are paired with the Atlassian account email and should stay server-side."]
+    },
+    {
       "id": "firebase",
       "name": "Firebase",
       "keyUrl": "https://firebase.google.com/docs/projects/api-keys",
@@ -917,8 +935,9 @@
       "docsUrl": "https://docs.slack.dev/authentication/tokens/",
       "sourceUrl": "https://docs.slack.dev/authentication/tokens/",
       "sourceKind": "official-docs",
-      "env": ["SLACK_BOT_TOKEN", "SLACK_USER_TOKEN", "SLACK_APP_TOKEN", "SLACK_SIGNING_SECRET"],
+      "env": ["SLACK_TOKEN", "SLACK_BOT_TOKEN", "SLACK_USER_TOKEN", "SLACK_APP_TOKEN", "SLACK_SIGNING_SECRET"],
       "envSafety": {
+        "SLACK_TOKEN": { "clientSafe": false },
         "SLACK_BOT_TOKEN": { "clientSafe": false },
         "SLACK_USER_TOKEN": { "clientSafe": false },
         "SLACK_APP_TOKEN": { "clientSafe": false },

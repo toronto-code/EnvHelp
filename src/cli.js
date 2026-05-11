@@ -20,6 +20,8 @@ const commands = {
   start,
   init: start,
   setup: start,
+  needs: needsCommand,
+  scan: needsCommand,
   add,
   link,
   links: link,
@@ -32,6 +34,8 @@ const commands = {
   rekey: share,
   join,
   providers: providersCommand,
+  commands: commandsCommand,
+  directory: commandsCommand,
   version,
   help
 };
@@ -190,6 +194,44 @@ async function add(argv = []) {
   console.log(`\nSaved ${Object.keys(updates).length} value(s), updated .env.example, and wrote .envhelper.json metadata.`);
 }
 
+async function needsCommand(argv = []) {
+  const options = parseArgs(argv);
+  const providers = await loadProviders();
+  const scan = await scanProject(cwd, providers);
+  const envPath = path.join(cwd, ".env");
+  const values = existsSync(envPath) ? await parseEnvFile(envPath) : {};
+  const rows = scan.envVars.map((item) => {
+    const provider = providerForEnvVar(item.name, providers, scan.packageNames);
+    return {
+      name: item.name,
+      status: values[item.name] ? "set" : "missing",
+      provider: provider?.name || null,
+      providerId: provider?.id || null,
+      link: provider ? bestProviderUrl(provider) : fallbackSearchUrl(item.name),
+      sources: item.sources
+    };
+  });
+
+  if (options.json) {
+    console.log(JSON.stringify(rows, null, 2));
+    return;
+  }
+
+  if (!rows.length) {
+    console.log("No env vars detected. Add a .env.example or run `envhelper add <provider>`.");
+    return;
+  }
+
+  console.log("Env vars this project needs:\n");
+  for (const row of rows) {
+    const mark = row.status === "set" ? "✓" : "!";
+    console.log(`${mark} ${row.name} - ${row.status}`);
+    console.log(`  provider: ${row.provider || "unknown"}`);
+    console.log(`  link: ${formatLink(row.provider ? "open key page" : "Google search", row.link)}`);
+    console.log(`  found in: ${row.sources.join(", ")}`);
+  }
+}
+
 async function link(argv = []) {
   const target = argv[0];
   if (!target) {
@@ -300,7 +342,15 @@ async function share(argv = []) {
     process.exitCode = 1;
     return;
   }
+  const options = parseArgs(argv);
+  if (options.invite || options.out) return invite(argv);
+  if (options.join) return join();
+
   const envPath = path.join(cwd, ".env");
+  const bundlePath = path.join(cwd, ".env.team.enc");
+  if (!existsSync(envPath) && existsSync(bundlePath)) return join();
+  if (!existsSync(envPath) && !existsSync(bundlePath)) return invite(argv);
+
   if (!existsSync(envPath)) {
     console.error("No .env file found. Run `envhelper start` first.");
     process.exitCode = 1;
@@ -365,6 +415,28 @@ async function providersCommand(argv = []) {
   }
 }
 
+function commandsCommand() {
+  banner();
+  console.log(`Main commands:
+  envhelper start       Set up this repo's .env locally
+  envhelper needs       Show what env vars are needed and where to get them
+  envhelper share       Share or receive an encrypted .env
+  envhelper doctor      Check for missing docs and likely secret leaks
+  envhelper link        Find a provider's API key page
+  envhelper commands    Show this command directory
+
+Useful extras:
+  envhelper add <provider-or-env-var>
+  envhelper providers
+  envhelper validate
+
+Explicit sharing aliases:
+  envhelper invite --out alice.pub
+  envhelper share --recipients-dir invites
+  envhelper join
+`);
+}
+
 async function version() {
   const packagePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json");
   const pkg = JSON.parse(await fs.readFile(packagePath, "utf8"));
@@ -372,41 +444,7 @@ async function version() {
 }
 
 function help() {
-  banner();
-  console.log(`Usage: envhelper <command>
-
-Commands:
-  start       Scan project and guide local .env setup
-  setup       Alias for start
-  add         Add one provider or env var to local setup
-  link        Print, copy, or open a provider key link
-  doctor      Check env hygiene and likely secret leaks
-  check       Alias for doctor
-  invite      Create local age identity and print public invite code
-  share       Encrypt .env to teammate invite codes
-  rekey       Re-encrypt .env.team.enc to a fresh recipient set
-  join        Decrypt .env.team.enc locally into .env
-  example     Generate .env.example from detected env vars
-  validate    Validate local .env values with providers after consent
-  providers   List built-in provider links
-  version     Print the EnvHelper version
-  help        Show this help
-
-Examples:
-  envhelper start
-  envhelper add stripe
-  envhelper add ACME_API_KEY
-  envhelper link stripe --copy
-  envhelper link ACME_API_KEY --open
-  envhelper doctor --fix
-  envhelper invite
-  envhelper invite --out alice.pub
-  envhelper share --recipient age1...
-  envhelper share --recipients-dir invites
-  envhelper join
-  envhelper providers --json
-  envhelper --version
-`);
+  commandsCommand();
 }
 
 function commandHelp(name) {
@@ -414,6 +452,8 @@ function commandHelp(name) {
     start: "Usage: envhelper start [--validate|--no-validate]\n\nScan the repo, guide local .env setup, and write non-secret .envhelper.json metadata.",
     init: "Usage: envhelper init [--validate|--no-validate]\n\nAlias for start.",
     setup: "Usage: envhelper setup [--validate|--no-validate]\n\nAlias for start.",
+    needs: "Usage: envhelper needs [--json]\n\nShow required env vars, whether they are set locally, and where to get missing keys.",
+    scan: "Usage: envhelper scan [--json]\n\nAlias for needs.",
     add: "Usage: envhelper add <provider-or-env-var> [--validate|--no-validate]\n\nAdd a provider or single env var to .env and .env.example.",
     link: "Usage: envhelper link <provider-or-env-var> [--copy] [--open]\n\nPrint, copy, or open a source-backed provider link. Unknown providers use Google search.",
     links: "Usage: envhelper links <provider-or-env-var> [--copy] [--open]\n\nAlias for link.",
@@ -422,10 +462,12 @@ function commandHelp(name) {
     example: "Usage: envhelper example\n\nGenerate .env.example from detected env vars.",
     validate: "Usage: envhelper validate\n\nValidate local .env values with providers after explicit consent.",
     invite: "Usage: envhelper invite [--out teammate.pub]\n\nCreate or reuse a local age identity and print the public invite code.",
-    share: "Usage: envhelper share [--recipient age1...] [--recipients-file file] [--recipients-dir dir]\n\nEncrypt .env to teammate invite codes using age.",
+    share: "Usage: envhelper share [--out teammate.pub] [--recipient age1...] [--recipients-file file] [--recipients-dir dir] [--join]\n\nSmart sharing command. With .env it encrypts for teammates. With .env.team.enc it decrypts locally. With neither, it creates your invite code.",
     rekey: "Usage: envhelper rekey [--recipient age1...] [--recipients-file file] [--recipients-dir dir]\n\nAlias for share; re-encrypts the current local .env to a fresh recipient set.",
     join: "Usage: envhelper join\n\nDecrypt .env.team.enc locally into .env.",
     providers: "Usage: envhelper providers [--json]\n\nList the built-in source-backed provider directory.",
+    commands: "Usage: envhelper commands\n\nShow the simplified command directory.",
+    directory: "Usage: envhelper directory\n\nAlias for commands.",
     version: "Usage: envhelper version\n\nPrint the EnvHelper version.",
     help: "Usage: envhelper help\n\nShow the main help."
   }[name];
@@ -540,6 +582,8 @@ function parseArgs(argv) {
     else if (arg === "--copy") options.copy = true;
     else if (arg === "--open") options.open = true;
     else if (arg === "--json") options.json = true;
+    else if (arg === "--invite") options.invite = true;
+    else if (arg === "--join") options.join = true;
     else if (arg === "--out") options.out = argv[++i];
     else if (arg === "--recipients-file") options.recipientsFile = argv[++i];
     else if (arg === "--recipients-dir") options.recipientsDir = argv[++i];

@@ -34,37 +34,55 @@ Validate with Stripe? This sends the value directly to Stripe. [y/N]
 Saved to .env
 ```
 
-For teams:
-
-```bash
-npx envhelper invite
-```
-
-This creates a local `age` identity and prints a public invite code. Public invite codes are safe to send to a teammate.
+For teams, one command handles the sharing lifecycle:
 
 ```bash
 npx envhelper share
 ```
 
-The team lead encrypts `.env` to teammate invite codes and creates:
+If you do not have `.env` yet, this creates a local `age` identity and prints a public invite code. Public invite codes are safe to send to a teammate.
+
+```bash
+npx envhelper share --recipients-dir invites
+```
+
+If you have `.env`, this encrypts it to teammate invite codes and creates:
 
 ```txt
 .env.team.enc
 ```
 
-Teammates decrypt locally:
+If you have `.env.team.enc`, this decrypts it locally:
 
 ```bash
-npx envhelper join
+npx envhelper share
 ```
 
 ## Commands
+
+The main command surface is intentionally small:
+
+```bash
+envhelper start      # set up .env locally
+envhelper needs      # see what keys are needed and where to get them
+envhelper share      # invite, encrypt, or decrypt depending on the repo state
+envhelper doctor     # check for leaks and setup mistakes
+envhelper link       # find an API key page
+envhelper commands   # show the command directory
+```
 
 ```bash
 envhelper start
 ```
 
 Scan the project, guide local `.env` setup, write non-secret `.envhelper.json` metadata, and make sure `.env` is ignored.
+
+```bash
+envhelper needs
+envhelper needs --json
+```
+
+Show required env vars, whether each one is set locally, the likely provider, the source files, and the best known key link.
 
 ```bash
 envhelper add stripe
@@ -105,7 +123,7 @@ Validate local `.env` values with providers after explicit consent. EnvHelper ne
 envhelper invite
 ```
 
-Generate a local `age` identity and print an invite code such as `age1...`.
+Explicit alias for the invite side of `envhelper share`. Generates a local `age` identity and prints an invite code such as `age1...`.
 
 ```bash
 envhelper invite --out alice.pub
@@ -135,7 +153,13 @@ Re-encrypt `.env.team.enc` to a fresh recipient set. This does not remove old bu
 envhelper join
 ```
 
-Decrypt `.env.team.enc` locally into `.env`.
+Explicit alias for the receive side of `envhelper share`. Decrypts `.env.team.enc` locally into `.env`.
+
+```bash
+envhelper commands
+```
+
+Show the simplified command directory.
 
 ```bash
 envhelper providers

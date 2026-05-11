@@ -22,6 +22,20 @@ test("cli link resolves known providers and falls back to Google", () => {
   assert.match(runCli(["link", "NOT_REAL_API_KEY"]), /https:\/\/www\.google\.com\/search\?q=NOT_REAL_API_KEY/);
 });
 
+test("cli needs reports missing and set env vars", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "envhelper-cli-needs-"));
+  await fs.writeFile(path.join(root, ".env.example"), "STRIPE_SECRET_KEY=\nSUPABASE_URL=\n", "utf8");
+  await fs.writeFile(path.join(root, ".env"), "SUPABASE_URL=https://demo.supabase.co\n", "utf8");
+
+  const output = runCli(["needs"], { cwd: root });
+  assert.match(output, /STRIPE_SECRET_KEY - missing/);
+  assert.match(output, /SUPABASE_URL - set/);
+
+  const json = JSON.parse(runCli(["needs", "--json"], { cwd: root }));
+  assert.equal(json.find((row) => row.name === "SUPABASE_URL").status, "set");
+  assert.equal(json.find((row) => row.name === "STRIPE_SECRET_KEY").status, "missing");
+});
+
 test("cli start can consume multiple piped prompt answers", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "envhelper-cli-start-"));
   await fs.writeFile(path.join(root, ".env.example"), "STRIPE_SECRET_KEY=\nSUPABASE_URL=\nUNKNOWN_VENDOR_TOKEN=\n", "utf8");
@@ -37,7 +51,7 @@ test("cli start can consume multiple piped prompt answers", async () => {
   assert.match(env, /UNKNOWN_VENDOR_TOKEN=unknown-secret-value/);
 });
 
-test("cli sharing encrypts and decrypts with age when available", async () => {
+test("cli smart share encrypts and decrypts with age when available", async () => {
   if (!hasAge()) return;
 
   const base = await fs.mkdtemp(path.join(os.tmpdir(), "envhelper-share-test-"));
@@ -50,7 +64,7 @@ test("cli sharing encrypts and decrypts with age when available", async () => {
   await fs.mkdir(teammateRepo, { recursive: true });
   await fs.mkdir(leadRepo, { recursive: true });
 
-  runCli(["invite", "--out", "alice.pub"], { cwd: teammateRepo, home: teammateHome });
+  runCli(["share", "--out", "alice.pub"], { cwd: teammateRepo, home: teammateHome });
   const publicKey = (await fs.readFile(path.join(teammateRepo, "alice.pub"), "utf8")).trim();
   assert.match(publicKey, /^age1/);
 
@@ -64,7 +78,7 @@ test("cli sharing encrypts and decrypts with age when available", async () => {
   assert.doesNotMatch(bundle, /shared-openai-test/);
 
   await fs.copyFile(path.join(leadRepo, ".env.team.enc"), path.join(teammateRepo, ".env.team.enc"));
-  runCli(["join"], { cwd: teammateRepo, home: teammateHome });
+  runCli(["share"], { cwd: teammateRepo, home: teammateHome });
   const decrypted = await fs.readFile(path.join(teammateRepo, ".env"), "utf8");
   assert.match(decrypted, /OPENAI_API_KEY=shared-openai-test/);
 });

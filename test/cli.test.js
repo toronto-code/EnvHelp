@@ -39,9 +39,13 @@ test("cli needs reports missing and set env vars", async () => {
   await fs.writeFile(path.join(root, ".env"), "SUPABASE_URL=https://demo.supabase.co\n", "utf8");
 
   const output = runCli(["needs"], { cwd: root });
-  assert.match(output, /STRIPE_SECRET_KEY - missing/);
-  assert.match(output, /SUPABASE_URL - set/);
+  assert.match(output, /STRIPE_SECRET_KEY \(Stripe\)/);
+  assert.match(output, /Already set: 1 hidden/);
+  assert.doesNotMatch(output, /SUPABASE_URL - set/);
   assert.doesNotMatch(output, /API_URL - missing/);
+
+  const showSet = runCli(["needs", "--show-set"], { cwd: root });
+  assert.match(showSet, /SUPABASE_URL \(Supabase\)/);
 
   const json = JSON.parse(runCli(["needs", "--json"], { cwd: root }));
   assert.equal(json.find((row) => row.name === "SUPABASE_URL").status, "set");
@@ -50,14 +54,14 @@ test("cli needs reports missing and set env vars", async () => {
   assert.equal(json.some((row) => row.name === "OPENAI_API_KEY"), false);
 
   const optional = runCli(["needs", "--optional"], { cwd: root });
-  assert.match(optional, /OPENAI_API_KEY - missing/);
+  assert.match(optional, /OPENAI_API_KEY \(optional credential, OpenAI\)/);
 
   const all = runCli(["needs", "--all"], { cwd: root });
-  assert.match(all, /API_URL - missing/);
-  assert.match(all, /OPENAI_DEFAULT_MODEL - missing/);
+  assert.match(all, /API_URL \(config, unknown\)/);
+  assert.match(all, /OPENAI_DEFAULT_MODEL \(config, unknown\)/);
 
   const allAlias = runCli(["needs", "-all"], { cwd: root });
-  assert.match(allAlias, /API_URL - missing/);
+  assert.match(allAlias, /API_URL \(config, unknown\)/);
 });
 
 test("cli start can consume multiple piped prompt answers", async () => {

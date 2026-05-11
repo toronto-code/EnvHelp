@@ -85,7 +85,7 @@ envhelper needs --all
 
 Show required credentials, whether each one is set locally, the likely provider, the source files, and the best known key link.
 
-Use `--optional` to include blank credentials that the repo template marks optional/fallback-backed, such as integrations that only matter in real mode. Use `--all` to include ordinary config values like ports, feature flags, defaults, and internal URLs. `-optional` and `-all` are accepted as forgiving aliases.
+By default, EnvHelper hides values that are already set and only shows what still needs action. Use `--show-set` to include already-set values, `--optional` to include blank credentials that the repo template marks optional/fallback-backed, and `--all` to include ordinary config values like ports, feature flags, defaults, and internal URLs. Add `--verbose` when you want source-file detail. `-optional` and `-all` are accepted as forgiving aliases.
 
 ```bash
 envhelper add stripe

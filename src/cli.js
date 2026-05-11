@@ -83,19 +83,27 @@ async function start(argv = []) {
   const options = parseArgs(argv);
   const providers = await loadProviders();
   const scan = await scanProject(cwd, providers);
-  const enriched = enrichEnvVars(scan, providers);
-  const setupItems = filterEnvRows(enriched, options);
+  const envPath = path.join(cwd, ".env");
+  const existing = existsSync(envPath) ? await parseEnvFile(envPath) : {};
+  const enriched = enrichEnvVars(scan, providers).map((item) => ({
+    ...item,
+    status: existing[item.name] ? "set" : "missing"
+  }));
+  const setupCandidates = filterEnvRows(enriched, options);
+  let setupItems = setupCandidates.filter((item) => item.status !== "set");
 
   if (scan.envVars.length === 0) {
     console.log("No env vars found. Add a .env.example or reference process.env.MY_KEY in code, then run again.");
     return;
   }
 
-  const skipped = enriched.length - setupItems.length;
+  const skipped = enriched.length - setupCandidates.length;
+  const alreadySet = setupCandidates.length - setupItems.length;
   console.log(`Found ${enriched.length} env var(s).`);
-  if (!options.all && skipped > 0) {
-    console.log(`Setting up ${setupItems.length} required setup value(s); skipping ${skipped} optional/default/config value(s).`);
-    console.log("Run `envhelper start --optional` for optional blank credentials, or `envhelper start --all` for every variable.");
+  if (!options.all) {
+    const scope = options.optional ? "required/optional credential" : "required setup value";
+    console.log(`Missing ${setupItems.length} ${scope}(s); ${alreadySet} already set.`);
+    if (skipped > 0) console.log(`Skipping ${skipped} optional/default/config value(s).`);
   }
 
   if (setupItems.length) {
@@ -106,13 +114,27 @@ async function start(argv = []) {
     }
     printOptionalPreview(enriched, options, "start");
   } else {
-    const optionalCount = enriched.filter((item) => item.kind === "optional credential").length;
-    console.log("No required setup values found.");
-    if (optionalCount) {
-      console.log(`Found ${optionalCount} optional blank credential(s).`);
+    const optionalMissing = enriched.filter((item) => item.kind === "optional credential" && item.status !== "set");
+    console.log("Nothing missing in the current setup scope.");
+    if (!options.optional && !options.all && optionalMissing.length && process.stdin.isTTY) {
       printOptionalPreview(enriched, options, "start");
+      const fillOptional = await promptYesNo("Fill optional credentials now? ");
+      if (fillOptional) {
+        options.optional = true;
+        setupItems = filterEnvRows(enriched, options).filter((item) => item.status !== "set");
+      }
     }
-    console.log("Run `envhelper needs --all` to inspect optional/default/config values.");
+    if (setupItems.length) {
+      console.log("\nSetup queue:\n");
+      for (const item of setupItems) {
+        const label = item.provider ? item.provider.name : "Unknown provider";
+        console.log(`- ${item.name} (${label})`);
+      }
+    }
+    if (!setupItems.length && optionalMissing.length) {
+      console.log(`Found ${optionalMissing.length} optional missing credential(s). Run \`envhelper start --optional\` to fill them.`);
+    }
+    if (!setupItems.length) console.log("Run `envhelper needs --all` to inspect optional/default/config values.");
   }
 
   await ensureEnvIgnored(cwd);
@@ -122,8 +144,6 @@ async function start(argv = []) {
     if (created) console.log("Created .env.example with detected env vars.");
   }
 
-  const envPath = path.join(cwd, ".env");
-  const existing = existsSync(envPath) ? await parseEnvFile(envPath) : {};
   const updates = {};
 
   for (const item of setupItems) {
@@ -245,6 +265,9 @@ async function needsCommand(argv = []) {
     };
   });
   const visibleRows = filterEnvRows(rows, options);
+  const missingRows = visibleRows.filter((row) => row.status !== "set");
+  const setRows = visibleRows.filter((row) => row.status === "set");
+  const displayRows = options.showSet ? visibleRows : missingRows;
 
   if (options.json) {
     console.log(JSON.stringify(visibleRows, null, 2));
@@ -257,10 +280,10 @@ async function needsCommand(argv = []) {
   }
 
   if (!visibleRows.length) {
-    const optionalCount = rows.filter((row) => row.kind === "optional credential").length;
+    const optionalCount = rows.filter((row) => row.kind === "optional credential" && row.status !== "set").length;
     console.log(`Found ${rows.length} env var(s), but none look required for setup.`);
     if (optionalCount) {
-      console.log(`There are ${optionalCount} optional blank credential(s).`);
+      console.log(`There are ${optionalCount} optional missing credential(s).`);
       printOptionalPreview(rows, options, "needs");
     }
     console.log("Run `envhelper needs --all` to show optional/default/config values too.");
@@ -268,14 +291,12 @@ async function needsCommand(argv = []) {
   }
 
   const hidden = rows.length - visibleRows.length;
-  console.log(options.all ? "All env vars:\n" : options.optional ? "Required and optional credentials:\n" : "Required setup values this project needs:\n");
-  for (const row of visibleRows) {
-    const mark = row.status === "set" ? "✓" : "!";
-    console.log(`${mark} ${row.name} - ${row.status}`);
-    console.log(`  kind: ${row.kind}`);
-    console.log(`  provider: ${row.provider || "unknown"}`);
-    if (row.link) console.log(`  link: ${formatLink(row.provider ? "open key page" : "Google search", row.link)}`);
-    console.log(`  found in: ${row.sources.join(", ")}`);
+  console.log(needsHeading(options, displayRows.length, setRows.length));
+  for (const row of displayRows) {
+    printNeedsRow(row, options);
+  }
+  if (!options.showSet && setRows.length > 0) {
+    console.log(`\nAlready set: ${setRows.length} hidden. Run \`envhelper needs ${needsFlagHint(options)}--show-set\` to include them.`);
   }
   if (!options.all && hidden > 0) {
     console.log(`\nSkipped ${hidden} optional/default/config value(s). Run \`envhelper needs --all\` to show them.`);
@@ -503,8 +524,8 @@ function commandHelp(name) {
     start: "Usage: envhelper start [--optional|--all] [--validate|--no-validate]\n\nScan the repo and guide setup for required credentials. Use --optional for optional blank credentials or --all for every variable.",
     init: "Usage: envhelper init [--optional|--all] [--validate|--no-validate]\n\nAlias for start.",
     setup: "Usage: envhelper setup [--optional|--all] [--validate|--no-validate]\n\nAlias for start.",
-    needs: "Usage: envhelper needs [--optional|--all] [--json]\n\nShow required credentials, whether they are set locally, and where to get missing keys. Use --optional for optional blank credentials or --all for config values too.",
-    scan: "Usage: envhelper scan [--optional|--all] [--json]\n\nAlias for needs.",
+    needs: "Usage: envhelper needs [--optional|--all] [--show-set] [--verbose] [--json]\n\nShow missing required credentials and where to get them. Use --optional for optional blank credentials, --all for config values too, --show-set to include values already present in .env, or --verbose to show source files.",
+    scan: "Usage: envhelper scan [--optional|--all] [--show-set] [--verbose] [--json]\n\nAlias for needs.",
     add: "Usage: envhelper add <provider-or-env-var> [--validate|--no-validate]\n\nAdd a provider or single env var to .env and .env.example.",
     link: "Usage: envhelper link <provider-or-env-var> [--copy] [--open]\n\nPrint, copy, or open a source-backed provider link. Unknown providers use Google search.",
     links: "Usage: envhelper links <provider-or-env-var> [--copy] [--open]\n\nAlias for link.",
@@ -632,7 +653,7 @@ function filterEnvRows(rows, options) {
 function printOptionalPreview(rows, options, command) {
   if (options.optional || options.all) return;
   const optional = rows
-    .filter((row) => row.kind === "optional credential")
+    .filter((row) => row.kind === "optional credential" && row.status !== "set")
     .sort((left, right) => providerRank(left) - providerRank(right) || left.name.localeCompare(right.name));
   if (!optional.length) return;
   const shown = optional.slice(0, 5);
@@ -642,6 +663,28 @@ function printOptionalPreview(rows, options, command) {
   }
   if (optional.length > shown.length) console.log(`- ...and ${optional.length - shown.length} more`);
   console.log(`Run \`envhelper ${command} --optional\` to include these.`);
+}
+
+function needsHeading(options, missingCount, setCount) {
+  const scope = options.all ? "all categories" : options.optional ? "required/optional credentials" : "required setup values";
+  if (missingCount) return `Missing ${scope}:`;
+  if (options.showSet) return `No missing ${scope}. Showing ${setCount} already set value(s):`;
+  return `No missing ${scope}.`;
+}
+
+function needsFlagHint(options) {
+  if (options.all) return "--all ";
+  if (options.optional) return "--optional ";
+  return "";
+}
+
+function printNeedsRow(row, options) {
+  const mark = row.status === "set" ? "✓" : "!";
+  const provider = row.provider || "unknown";
+  const detail = options.all || options.optional ? `${row.kind}, ${provider}` : provider;
+  console.log(`${mark} ${row.name} (${detail})`);
+  if (row.link) console.log(`  ${formatLink(row.provider ? "open key page" : "Google search", row.link)}`);
+  if (options.verbose) console.log(`  found in: ${row.sources.join(", ")}`);
 }
 
 function providerLabel(row) {
@@ -708,6 +751,8 @@ function parseArgs(argv) {
     else if (arg === "--copy") options.copy = true;
     else if (arg === "--open") options.open = true;
     else if (arg === "--json") options.json = true;
+    else if (arg === "--show-set") options.showSet = true;
+    else if (arg === "--verbose") options.verbose = true;
     else if (arg === "--invite") options.invite = true;
     else if (arg === "--join") options.join = true;
     else if (arg === "--all" || arg === "-all") options.all = true;

@@ -79,12 +79,13 @@ Scan the project, guide local `.env` setup, write non-secret `.envhelper.json` m
 
 ```bash
 envhelper needs
+envhelper needs --optional
 envhelper needs --all
 ```
 
 Show required credentials, whether each one is set locally, the likely provider, the source files, and the best known key link.
 
-Use `--optional` to include blank credentials that the repo template marks optional/fallback-backed. Use `--all` to include ordinary config values like ports, feature flags, defaults, and internal URLs.
+Use `--optional` to include blank credentials that the repo template marks optional/fallback-backed, such as integrations that only matter in real mode. Use `--all` to include ordinary config values like ports, feature flags, defaults, and internal URLs. `-optional` and `-all` are accepted as forgiving aliases.
 
 ```bash
 envhelper add stripe

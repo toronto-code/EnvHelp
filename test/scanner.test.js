@@ -36,6 +36,37 @@ test("scanProject detects env vars from common project sources", async () => {
   ]);
 });
 
+test("scanProject ignores EnvHelper-generated metadata as a source of requirements", async () => {
+  const root = await tempProject();
+  await fs.writeFile(
+    path.join(root, ".envhelper.json"),
+    JSON.stringify({
+      version: 1,
+      generatedBy: "envhelper",
+      detected: ["OPENAI_API_KEY"],
+      providers: {
+        OPENAI_API_KEY: "openai"
+      }
+    }),
+    "utf8"
+  );
+
+  const providers = await loadProviders();
+  const scan = await scanProject(root, providers);
+
+  assert.deepEqual(scan.envVars.map((item) => item.name), []);
+});
+
+test("scanProject keeps hand-authored EnvHelper requirements", async () => {
+  const root = await tempProject();
+  await fs.writeFile(path.join(root, ".envhelper.json"), JSON.stringify({ required: ["OPENAI_API_KEY"] }), "utf8");
+
+  const providers = await loadProviders();
+  const scan = await scanProject(root, providers);
+
+  assert.deepEqual(scan.envVars.map((item) => item.name), ["OPENAI_API_KEY"]);
+});
+
 test("scanProject ignores common terminal and documentation placeholder env vars", async () => {
   const root = await tempProject();
   await fs.mkdir(path.join(root, "src"));

@@ -104,10 +104,14 @@ async function start(argv = []) {
       const label = item.provider ? item.provider.name : "Unknown provider";
       console.log(`- ${item.name} (${label})`);
     }
+    printOptionalPreview(enriched, options, "start");
   } else {
     const optionalCount = enriched.filter((item) => item.kind === "optional credential").length;
     console.log("No required setup values found.");
-    if (optionalCount) console.log(`Found ${optionalCount} optional blank credential(s). Run \`envhelper start --optional\` to fill them.`);
+    if (optionalCount) {
+      console.log(`Found ${optionalCount} optional blank credential(s).`);
+      printOptionalPreview(enriched, options, "start");
+    }
     console.log("Run `envhelper needs --all` to inspect optional/default/config values.");
   }
 
@@ -255,7 +259,10 @@ async function needsCommand(argv = []) {
   if (!visibleRows.length) {
     const optionalCount = rows.filter((row) => row.kind === "optional credential").length;
     console.log(`Found ${rows.length} env var(s), but none look required for setup.`);
-    if (optionalCount) console.log(`There are ${optionalCount} optional blank credential(s). Run \`envhelper needs --optional\` to show them.`);
+    if (optionalCount) {
+      console.log(`There are ${optionalCount} optional blank credential(s).`);
+      printOptionalPreview(rows, options, "needs");
+    }
     console.log("Run `envhelper needs --all` to show optional/default/config values too.");
     return;
   }
@@ -271,7 +278,8 @@ async function needsCommand(argv = []) {
     console.log(`  found in: ${row.sources.join(", ")}`);
   }
   if (!options.all && hidden > 0) {
-    console.log(`\nSkipped ${hidden} config value(s). Run \`envhelper needs --all\` to show them.`);
+    console.log(`\nSkipped ${hidden} optional/default/config value(s). Run \`envhelper needs --all\` to show them.`);
+    printOptionalPreview(rows, options, "needs");
   }
 }
 
@@ -621,6 +629,31 @@ function filterEnvRows(rows, options) {
   return rows.filter((row) => row.kind === "required credential");
 }
 
+function printOptionalPreview(rows, options, command) {
+  if (options.optional || options.all) return;
+  const optional = rows
+    .filter((row) => row.kind === "optional credential")
+    .sort((left, right) => providerRank(left) - providerRank(right) || left.name.localeCompare(right.name));
+  if (!optional.length) return;
+  const shown = optional.slice(0, 5);
+  console.log("\nOptional credentials detected:");
+  for (const row of shown) {
+    console.log(`- ${row.name} (${providerLabel(row)})`);
+  }
+  if (optional.length > shown.length) console.log(`- ...and ${optional.length - shown.length} more`);
+  console.log(`Run \`envhelper ${command} --optional\` to include these.`);
+}
+
+function providerLabel(row) {
+  if (!row.provider) return "Unknown provider";
+  if (typeof row.provider === "string") return row.provider;
+  return row.provider.name || "Unknown provider";
+}
+
+function providerRank(row) {
+  return providerLabel(row).toLowerCase().startsWith("unknown") ? 1 : 0;
+}
+
 function classifyEnvVar(name, provider, template = summarizeTemplates([])) {
   const credentialLike = isKnownProviderEnvVar(name, provider) || isLikelyCredentialEnvVar(name);
   if (!credentialLike) return "config";
@@ -677,8 +710,8 @@ function parseArgs(argv) {
     else if (arg === "--json") options.json = true;
     else if (arg === "--invite") options.invite = true;
     else if (arg === "--join") options.join = true;
-    else if (arg === "--all") options.all = true;
-    else if (arg === "--optional") options.optional = true;
+    else if (arg === "--all" || arg === "-all") options.all = true;
+    else if (arg === "--optional" || arg === "-optional") options.optional = true;
     else if (arg === "--out") options.out = argv[++i];
     else if (arg === "--recipients-file") options.recipientsFile = argv[++i];
     else if (arg === "--recipients-dir") options.recipientsDir = argv[++i];

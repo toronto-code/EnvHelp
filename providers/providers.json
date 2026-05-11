@@ -35,7 +35,7 @@
       "docsUrl": "https://supabase.com/docs/guides/api/api-keys",
       "sourceUrl": "https://supabase.com/docs/guides/api/api-keys",
       "sourceKind": "official-docs",
-      "env": ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_PUBLISHABLE_KEY", "SUPABASE_SECRET_KEY", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"],
+      "env": ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_PUBLISHABLE_KEY", "SUPABASE_SECRET_KEY", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"],
       "envSafety": {
         "SUPABASE_URL": { "clientSafe": true, "validation": { "type": "url", "protocol": "https:", "success": "Supabase URL looks valid." } },
         "SUPABASE_ANON_KEY": { "clientSafe": true },
@@ -43,7 +43,8 @@
         "SUPABASE_PUBLISHABLE_KEY": { "clientSafe": true },
         "SUPABASE_SECRET_KEY": { "clientSafe": false },
         "NEXT_PUBLIC_SUPABASE_URL": { "clientSafe": true },
-        "NEXT_PUBLIC_SUPABASE_ANON_KEY": { "clientSafe": true }
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY": { "clientSafe": true },
+        "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY": { "clientSafe": true }
       },
       "envPatterns": ["^SUPABASE_", "^NEXT_PUBLIC_SUPABASE_"],
       "packages": ["@supabase/supabase-js"],

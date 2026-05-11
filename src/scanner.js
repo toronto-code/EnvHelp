@@ -224,8 +224,10 @@ async function collectEnvExample(root, envVars) {
   for (const name of candidates) {
     const file = path.join(root, name);
     if (!existsSync(file)) continue;
-    const parsed = await parseEnvFile(file);
-    for (const key of Object.keys(parsed)) addEnv(envVars, key, name);
+    const content = await fs.readFile(file, "utf8");
+    for (const entry of parseEnvTemplate(content)) {
+      addEnv(envVars, entry.name, name, { template: entry });
+    }
   }
 }
 
@@ -235,20 +237,61 @@ async function collectEnvhelperMetadata(root, envVars) {
   if (!existsSync(file)) return;
   try {
     const metadata = JSON.parse(await fs.readFile(file, "utf8"));
+    if (metadata.generatedBy === "envhelper" || metadata.providers) return;
     for (const key of metadata.required || []) addEnv(envVars, key, name);
   } catch {
     return;
   }
 }
 
-function addEnv(map, name, source) {
+function addEnv(map, name, source, metadata = {}) {
   if (!name) return;
   const normalized = name.trim();
   if (ignoredEnvNames.has(normalized.toUpperCase())) return;
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(normalized)) return;
-  const current = map.get(normalized) || { name: normalized, sources: [] };
+  const current = map.get(normalized) || { name: normalized, sources: [], templates: [] };
   if (!current.sources.includes(source)) current.sources.push(source);
+  if (metadata.template) current.templates.push(metadata.template);
   map.set(normalized, current);
+}
+
+function parseEnvTemplate(content) {
+  const entries = [];
+  let comments = [];
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) {
+      comments = [];
+      continue;
+    }
+    if (line.startsWith("#")) {
+      comments.push(line.replace(/^#+\s?/, "").trim());
+      comments = comments.slice(-12);
+      continue;
+    }
+    const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+    if (!match) continue;
+    const value = stripInlineComment(match[2].trim());
+    const context = comments.join(" ");
+    entries.push({
+      name: match[1],
+      value,
+      hasDefault: value.length > 0,
+      optional: isOptionalTemplateContext(context),
+      context
+    });
+  }
+  return entries;
+}
+
+function stripInlineComment(value) {
+  if (!value) return "";
+  const hash = value.search(/\s+#/);
+  return hash === -1 ? value : value.slice(0, hash).trim();
+}
+
+function isOptionalTemplateContext(context) {
+  return /\b(optional|recommended|fallback|falls back|if unset|safe to leave blank|leave blank|leave empty|deprecated|no longer|not wired|not required|no .* required|simulated only|demo still works|observability|settings page)\b/i.test(context);
 }
 
 async function readPackageNames(root) {

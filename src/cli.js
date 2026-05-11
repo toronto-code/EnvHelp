@@ -72,7 +72,11 @@ if (args.includes("--help") || args.includes("-h")) {
   process.exit(0);
 }
 
-await commands[command](args);
+try {
+  await commands[command](args);
+} finally {
+  if (process.stdin.isTTY) process.stdin.pause();
+}
 
 async function start(argv = []) {
   banner();
@@ -80,7 +84,7 @@ async function start(argv = []) {
   const providers = await loadProviders();
   const scan = await scanProject(cwd, providers);
   const enriched = enrichEnvVars(scan, providers);
-  const setupItems = options.all ? enriched : enriched.filter((item) => item.actionable);
+  const setupItems = filterEnvRows(enriched, options);
 
   if (scan.envVars.length === 0) {
     console.log("No env vars found. Add a .env.example or reference process.env.MY_KEY in code, then run again.");
@@ -90,8 +94,8 @@ async function start(argv = []) {
   const skipped = enriched.length - setupItems.length;
   console.log(`Found ${enriched.length} env var(s).`);
   if (!options.all && skipped > 0) {
-    console.log(`Setting up ${setupItems.length} likely credential(s); skipping ${skipped} config value(s).`);
-    console.log("Run `envhelper needs --all` to see everything, or `envhelper start --all` to fill every variable.");
+    console.log(`Setting up ${setupItems.length} required setup value(s); skipping ${skipped} optional/default/config value(s).`);
+    console.log("Run `envhelper start --optional` for optional blank credentials, or `envhelper start --all` for every variable.");
   }
 
   if (setupItems.length) {
@@ -101,7 +105,10 @@ async function start(argv = []) {
       console.log(`- ${item.name} (${label})`);
     }
   } else {
-    console.log("No likely credentials found. Run `envhelper needs --all` to inspect config values.");
+    const optionalCount = enriched.filter((item) => item.kind === "optional credential").length;
+    console.log("No required setup values found.");
+    if (optionalCount) console.log(`Found ${optionalCount} optional blank credential(s). Run \`envhelper start --optional\` to fill them.`);
+    console.log("Run `envhelper needs --all` to inspect optional/default/config values.");
   }
 
   await ensureEnvIgnored(cwd);
@@ -155,7 +162,6 @@ async function start(argv = []) {
   }
 
   await writeMetadata(cwd, scan, providers);
-  console.log("Wrote non-secret .envhelper.json metadata.");
   console.log("\nNext: run `envhelper doctor` to check for leaks, or `envhelper share` to encrypt for teammates.");
 }
 
@@ -222,18 +228,19 @@ async function needsCommand(argv = []) {
   const values = existsSync(envPath) ? await parseEnvFile(envPath) : {};
   const rows = scan.envVars.map((item) => {
     const provider = providerForEnvVar(item.name, providers, scan.packageNames);
-    const actionable = shouldPromptForEnvVar(item.name, provider);
+    const template = summarizeTemplates(item.templates || []);
+    const kind = classifyEnvVar(item.name, provider, template);
     return {
       name: item.name,
       status: values[item.name] ? "set" : "missing",
       provider: provider?.name || null,
       providerId: provider?.id || null,
-      kind: actionable ? "credential" : "config",
-      link: provider ? bestProviderUrl(provider) : actionable ? fallbackSearchUrl(item.name) : null,
+      kind,
+      link: provider ? bestProviderUrl(provider) : kind.includes("credential") ? fallbackSearchUrl(item.name) : null,
       sources: item.sources
     };
   });
-  const visibleRows = options.all ? rows : rows.filter((row) => row.kind === "credential");
+  const visibleRows = filterEnvRows(rows, options);
 
   if (options.json) {
     console.log(JSON.stringify(visibleRows, null, 2));
@@ -246,16 +253,19 @@ async function needsCommand(argv = []) {
   }
 
   if (!visibleRows.length) {
-    console.log(`Found ${rows.length} env var(s), but none look like API keys or credentials.`);
-    console.log("Run `envhelper needs --all` to show config values too.");
+    const optionalCount = rows.filter((row) => row.kind === "optional credential").length;
+    console.log(`Found ${rows.length} env var(s), but none look required for setup.`);
+    if (optionalCount) console.log(`There are ${optionalCount} optional blank credential(s). Run \`envhelper needs --optional\` to show them.`);
+    console.log("Run `envhelper needs --all` to show optional/default/config values too.");
     return;
   }
 
   const hidden = rows.length - visibleRows.length;
-  console.log(options.all ? "All env vars:\n" : "Likely credentials this project needs:\n");
+  console.log(options.all ? "All env vars:\n" : options.optional ? "Required and optional credentials:\n" : "Required setup values this project needs:\n");
   for (const row of visibleRows) {
     const mark = row.status === "set" ? "✓" : "!";
     console.log(`${mark} ${row.name} - ${row.status}`);
+    console.log(`  kind: ${row.kind}`);
     console.log(`  provider: ${row.provider || "unknown"}`);
     if (row.link) console.log(`  link: ${formatLink(row.provider ? "open key page" : "Google search", row.link)}`);
     console.log(`  found in: ${row.sources.join(", ")}`);
@@ -482,11 +492,11 @@ function help() {
 
 function commandHelp(name) {
   const text = {
-    start: "Usage: envhelper start [--all] [--validate|--no-validate]\n\nScan the repo and guide setup for likely credentials. Use --all to fill config values too.",
-    init: "Usage: envhelper init [--all] [--validate|--no-validate]\n\nAlias for start.",
-    setup: "Usage: envhelper setup [--all] [--validate|--no-validate]\n\nAlias for start.",
-    needs: "Usage: envhelper needs [--all] [--json]\n\nShow likely credentials, whether they are set locally, and where to get missing keys. Use --all for config values too.",
-    scan: "Usage: envhelper scan [--all] [--json]\n\nAlias for needs.",
+    start: "Usage: envhelper start [--optional|--all] [--validate|--no-validate]\n\nScan the repo and guide setup for required credentials. Use --optional for optional blank credentials or --all for every variable.",
+    init: "Usage: envhelper init [--optional|--all] [--validate|--no-validate]\n\nAlias for start.",
+    setup: "Usage: envhelper setup [--optional|--all] [--validate|--no-validate]\n\nAlias for start.",
+    needs: "Usage: envhelper needs [--optional|--all] [--json]\n\nShow required credentials, whether they are set locally, and where to get missing keys. Use --optional for optional blank credentials or --all for config values too.",
+    scan: "Usage: envhelper scan [--optional|--all] [--json]\n\nAlias for needs.",
     add: "Usage: envhelper add <provider-or-env-var> [--validate|--no-validate]\n\nAdd a provider or single env var to .env and .env.example.",
     link: "Usage: envhelper link <provider-or-env-var> [--copy] [--open]\n\nPrint, copy, or open a source-backed provider link. Unknown providers use Google search.",
     links: "Usage: envhelper links <provider-or-env-var> [--copy] [--open]\n\nAlias for link.",
@@ -546,7 +556,7 @@ async function collectRecipients(argv) {
 async function writeMetadata(root, scan, providers) {
   const names = scan.envVars.map((item) => item.name);
   const metadata = buildMetadata(root, names, providers, scan.packageNames);
-  await fs.writeFile(path.join(root, ".envhelper.json"), `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
+  await writeMetadataFile(root, metadata);
 }
 
 async function mergeMetadata(root, names, providers, packageNames = []) {
@@ -559,14 +569,24 @@ async function mergeMetadata(root, names, providers, packageNames = []) {
   }
   const required = [...new Set([...(existing.required || []), ...names])].sort();
   const metadata = buildMetadata(root, required, providers, packageNames);
-  await fs.writeFile(file, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
+  await writeMetadataFile(root, metadata);
+}
+
+async function writeMetadataFile(root, metadata) {
+  try {
+    await fs.writeFile(path.join(root, ".envhelper.json"), `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
+    console.log("Wrote non-secret .envhelper.json metadata.");
+  } catch (error) {
+    console.log(`Skipped .envhelper.json metadata: ${error.code || error.message}`);
+  }
 }
 
 function buildMetadata(root, names, providers, packageNames = []) {
   return {
     version: 1,
+    generatedBy: "envhelper",
     project: path.basename(root),
-    required: [...new Set(names)].sort(),
+    detected: [...new Set(names)].sort(),
     providers: Object.fromEntries(
       [...new Set(names)].sort().map((name) => {
         const provider = providerForEnvVar(name, providers, packageNames);
@@ -583,16 +603,41 @@ function looksFrontendPublic(name) {
 function enrichEnvVars(scan, providers) {
   return scan.envVars.map((item) => {
     const provider = providerForEnvVar(item.name, providers, scan.packageNames);
+    const template = summarizeTemplates(item.templates || []);
+    const kind = classifyEnvVar(item.name, provider, template);
     return {
       ...item,
       provider,
-      actionable: shouldPromptForEnvVar(item.name, provider)
+      template,
+      kind,
+      actionable: kind === "required credential"
     };
   });
 }
 
-function shouldPromptForEnvVar(name, provider) {
-  return isKnownProviderEnvVar(name, provider) || isLikelyCredentialEnvVar(name);
+function filterEnvRows(rows, options) {
+  if (options.all) return rows;
+  if (options.optional) return rows.filter((row) => row.kind === "required credential" || row.kind === "optional credential");
+  return rows.filter((row) => row.kind === "required credential");
+}
+
+function classifyEnvVar(name, provider, template = summarizeTemplates([])) {
+  const credentialLike = isKnownProviderEnvVar(name, provider) || isLikelyCredentialEnvVar(name);
+  if (!credentialLike) return "config";
+  if (template.hasTemplate) {
+    if (template.required) return "required credential";
+    if (template.blankOptional) return "optional credential";
+    return "defaulted credential";
+  }
+  return isKnownProviderEnvVar(name, provider) ? "required credential" : "optional credential";
+}
+
+function summarizeTemplates(templates) {
+  const hasTemplate = templates.length > 0;
+  const blankTemplates = templates.filter((template) => !template.hasDefault);
+  const required = hasTemplate && blankTemplates.length > 0 && blankTemplates.every((template) => !template.optional);
+  const blankOptional = hasTemplate && !required && blankTemplates.length > 0;
+  return { hasTemplate, required, blankOptional };
 }
 
 function fallbackSearchUrl(name) {
@@ -633,6 +678,7 @@ function parseArgs(argv) {
     else if (arg === "--invite") options.invite = true;
     else if (arg === "--join") options.join = true;
     else if (arg === "--all") options.all = true;
+    else if (arg === "--optional") options.optional = true;
     else if (arg === "--out") options.out = argv[++i];
     else if (arg === "--recipients-file") options.recipientsFile = argv[++i];
     else if (arg === "--recipients-dir") options.recipientsDir = argv[++i];
@@ -721,6 +767,7 @@ async function promptSecret(question) {
       if (char === "\r" || char === "\n") {
         process.stdin.setRawMode(false);
         process.stdin.off("data", onData);
+        process.stdin.pause();
         process.stdout.write("\n");
         resolve(value);
         return;

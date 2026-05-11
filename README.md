@@ -64,7 +64,7 @@ The main command surface is intentionally small:
 
 ```bash
 envhelper start      # set up .env locally
-envhelper needs      # see what keys are needed and where to get them
+envhelper needs      # see likely API keys/secrets and where to get them
 envhelper share      # invite, encrypt, or decrypt depending on the repo state
 envhelper doctor     # check for leaks and setup mistakes
 envhelper link       # find an API key page
@@ -79,10 +79,10 @@ Scan the project, guide local `.env` setup, write non-secret `.envhelper.json` m
 
 ```bash
 envhelper needs
-envhelper needs --json
+envhelper needs --all
 ```
 
-Show required env vars, whether each one is set locally, the likely provider, the source files, and the best known key link.
+Show likely credentials, whether each one is set locally, the likely provider, the source files, and the best known key link. Use `--all` to include ordinary config values like ports, feature flags, and internal URLs.
 
 ```bash
 envhelper add stripe

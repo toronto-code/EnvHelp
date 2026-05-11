@@ -24,21 +24,27 @@ test("cli link resolves known providers and falls back to Google", () => {
 
 test("cli needs reports missing and set env vars", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "envhelper-cli-needs-"));
-  await fs.writeFile(path.join(root, ".env.example"), "STRIPE_SECRET_KEY=\nSUPABASE_URL=\n", "utf8");
+  await fs.writeFile(path.join(root, ".env.example"), "STRIPE_SECRET_KEY=\nSUPABASE_URL=\nAPI_URL=\nOPENAI_DEFAULT_MODEL=\n", "utf8");
   await fs.writeFile(path.join(root, ".env"), "SUPABASE_URL=https://demo.supabase.co\n", "utf8");
 
   const output = runCli(["needs"], { cwd: root });
   assert.match(output, /STRIPE_SECRET_KEY - missing/);
   assert.match(output, /SUPABASE_URL - set/);
+  assert.doesNotMatch(output, /API_URL - missing/);
 
   const json = JSON.parse(runCli(["needs", "--json"], { cwd: root }));
   assert.equal(json.find((row) => row.name === "SUPABASE_URL").status, "set");
   assert.equal(json.find((row) => row.name === "STRIPE_SECRET_KEY").status, "missing");
+  assert.equal(json.some((row) => row.name === "API_URL"), false);
+
+  const all = runCli(["needs", "--all"], { cwd: root });
+  assert.match(all, /API_URL - missing/);
+  assert.match(all, /OPENAI_DEFAULT_MODEL - missing/);
 });
 
 test("cli start can consume multiple piped prompt answers", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "envhelper-cli-start-"));
-  await fs.writeFile(path.join(root, ".env.example"), "STRIPE_SECRET_KEY=\nSUPABASE_URL=\nUNKNOWN_VENDOR_TOKEN=\n", "utf8");
+  await fs.writeFile(path.join(root, ".env.example"), "STRIPE_SECRET_KEY=\nSUPABASE_URL=\nUNKNOWN_VENDOR_TOKEN=\nAPI_URL=\n", "utf8");
 
   runCli(["start", "--no-validate"], {
     cwd: root,
@@ -49,6 +55,7 @@ test("cli start can consume multiple piped prompt answers", async () => {
   assert.match(env, /STRIPE_SECRET_KEY=sk_test_12345678901234567890/);
   assert.match(env, /SUPABASE_URL=https:\/\/demo\.supabase\.co/);
   assert.match(env, /UNKNOWN_VENDOR_TOKEN=unknown-secret-value/);
+  assert.doesNotMatch(env, /API_URL=/);
 });
 
 test("cli smart share encrypts and decrypts with age when available", async () => {

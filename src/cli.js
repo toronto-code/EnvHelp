@@ -8,7 +8,15 @@ import { fileURLToPath } from "node:url";
 import { decryptBundle, ensureAgeIdentity, encryptBundle, hasAge } from "./crypto-age.js";
 import { ensureEnvIgnored, parseEnvFile, upsertEnvFile, writeEnvExample } from "./envfile.js";
 import { copyText, formatLink, googleSearchUrl, openUrl } from "./links.js";
-import { envVarClientSafe, loadProviders, providerByQuery, providerForEnvVar, providerTable } from "./providers.js";
+import {
+  envVarClientSafe,
+  isKnownProviderEnvVar,
+  isLikelyCredentialEnvVar,
+  loadProviders,
+  providerByQuery,
+  providerForEnvVar,
+  providerTable
+} from "./providers.js";
 import { doctor, scanProject } from "./scanner.js";
 import { canValidateEnvVar, validateEnvValue } from "./validators.js";
 
@@ -71,23 +79,35 @@ async function start(argv = []) {
   const options = parseArgs(argv);
   const providers = await loadProviders();
   const scan = await scanProject(cwd, providers);
+  const enriched = enrichEnvVars(scan, providers);
+  const setupItems = options.all ? enriched : enriched.filter((item) => item.actionable);
 
   if (scan.envVars.length === 0) {
     console.log("No env vars found. Add a .env.example or reference process.env.MY_KEY in code, then run again.");
     return;
   }
 
-  console.log("Detected env vars:\n");
-  for (const item of scan.envVars) {
-    const provider = providerForEnvVar(item.name, providers, scan.packageNames);
-    const label = provider ? provider.name : "Unknown provider";
-    console.log(`- ${item.name} (${label})`);
+  const skipped = enriched.length - setupItems.length;
+  console.log(`Found ${enriched.length} env var(s).`);
+  if (!options.all && skipped > 0) {
+    console.log(`Setting up ${setupItems.length} likely credential(s); skipping ${skipped} config value(s).`);
+    console.log("Run `envhelper needs --all` to see everything, or `envhelper start --all` to fill every variable.");
+  }
+
+  if (setupItems.length) {
+    console.log("\nSetup queue:\n");
+    for (const item of setupItems) {
+      const label = item.provider ? item.provider.name : "Unknown provider";
+      console.log(`- ${item.name} (${label})`);
+    }
+  } else {
+    console.log("No likely credentials found. Run `envhelper needs --all` to inspect config values.");
   }
 
   await ensureEnvIgnored(cwd);
   const examplePath = path.join(cwd, ".env.example");
   if (!existsSync(examplePath)) {
-    const created = await writeEnvExample(examplePath, scan.envVars.map((item) => item.name));
+    const created = await writeEnvExample(examplePath, setupItems.map((item) => item.name));
     if (created) console.log("Created .env.example with detected env vars.");
   }
 
@@ -95,9 +115,9 @@ async function start(argv = []) {
   const existing = existsSync(envPath) ? await parseEnvFile(envPath) : {};
   const updates = {};
 
-  for (const item of scan.envVars) {
+  for (const item of setupItems) {
     if (existing[item.name]) continue;
-    const provider = providerForEnvVar(item.name, providers, scan.packageNames);
+    const provider = item.provider;
     console.log("");
     console.log(item.name);
     if (provider) {
@@ -202,18 +222,21 @@ async function needsCommand(argv = []) {
   const values = existsSync(envPath) ? await parseEnvFile(envPath) : {};
   const rows = scan.envVars.map((item) => {
     const provider = providerForEnvVar(item.name, providers, scan.packageNames);
+    const actionable = shouldPromptForEnvVar(item.name, provider);
     return {
       name: item.name,
       status: values[item.name] ? "set" : "missing",
       provider: provider?.name || null,
       providerId: provider?.id || null,
-      link: provider ? bestProviderUrl(provider) : fallbackSearchUrl(item.name),
+      kind: actionable ? "credential" : "config",
+      link: provider ? bestProviderUrl(provider) : actionable ? fallbackSearchUrl(item.name) : null,
       sources: item.sources
     };
   });
+  const visibleRows = options.all ? rows : rows.filter((row) => row.kind === "credential");
 
   if (options.json) {
-    console.log(JSON.stringify(rows, null, 2));
+    console.log(JSON.stringify(visibleRows, null, 2));
     return;
   }
 
@@ -222,13 +245,23 @@ async function needsCommand(argv = []) {
     return;
   }
 
-  console.log("Env vars this project needs:\n");
-  for (const row of rows) {
+  if (!visibleRows.length) {
+    console.log(`Found ${rows.length} env var(s), but none look like API keys or credentials.`);
+    console.log("Run `envhelper needs --all` to show config values too.");
+    return;
+  }
+
+  const hidden = rows.length - visibleRows.length;
+  console.log(options.all ? "All env vars:\n" : "Likely credentials this project needs:\n");
+  for (const row of visibleRows) {
     const mark = row.status === "set" ? "✓" : "!";
     console.log(`${mark} ${row.name} - ${row.status}`);
     console.log(`  provider: ${row.provider || "unknown"}`);
-    console.log(`  link: ${formatLink(row.provider ? "open key page" : "Google search", row.link)}`);
+    if (row.link) console.log(`  link: ${formatLink(row.provider ? "open key page" : "Google search", row.link)}`);
     console.log(`  found in: ${row.sources.join(", ")}`);
+  }
+  if (!options.all && hidden > 0) {
+    console.log(`\nSkipped ${hidden} config value(s). Run \`envhelper needs --all\` to show them.`);
   }
 }
 
@@ -449,11 +482,11 @@ function help() {
 
 function commandHelp(name) {
   const text = {
-    start: "Usage: envhelper start [--validate|--no-validate]\n\nScan the repo, guide local .env setup, and write non-secret .envhelper.json metadata.",
-    init: "Usage: envhelper init [--validate|--no-validate]\n\nAlias for start.",
-    setup: "Usage: envhelper setup [--validate|--no-validate]\n\nAlias for start.",
-    needs: "Usage: envhelper needs [--json]\n\nShow required env vars, whether they are set locally, and where to get missing keys.",
-    scan: "Usage: envhelper scan [--json]\n\nAlias for needs.",
+    start: "Usage: envhelper start [--all] [--validate|--no-validate]\n\nScan the repo and guide setup for likely credentials. Use --all to fill config values too.",
+    init: "Usage: envhelper init [--all] [--validate|--no-validate]\n\nAlias for start.",
+    setup: "Usage: envhelper setup [--all] [--validate|--no-validate]\n\nAlias for start.",
+    needs: "Usage: envhelper needs [--all] [--json]\n\nShow likely credentials, whether they are set locally, and where to get missing keys. Use --all for config values too.",
+    scan: "Usage: envhelper scan [--all] [--json]\n\nAlias for needs.",
     add: "Usage: envhelper add <provider-or-env-var> [--validate|--no-validate]\n\nAdd a provider or single env var to .env and .env.example.",
     link: "Usage: envhelper link <provider-or-env-var> [--copy] [--open]\n\nPrint, copy, or open a source-backed provider link. Unknown providers use Google search.",
     links: "Usage: envhelper links <provider-or-env-var> [--copy] [--open]\n\nAlias for link.",
@@ -547,6 +580,21 @@ function looksFrontendPublic(name) {
   return name.startsWith("NEXT_PUBLIC_") || name.startsWith("VITE_") || name.startsWith("PUBLIC_");
 }
 
+function enrichEnvVars(scan, providers) {
+  return scan.envVars.map((item) => {
+    const provider = providerForEnvVar(item.name, providers, scan.packageNames);
+    return {
+      ...item,
+      provider,
+      actionable: shouldPromptForEnvVar(item.name, provider)
+    };
+  });
+}
+
+function shouldPromptForEnvVar(name, provider) {
+  return isKnownProviderEnvVar(name, provider) || isLikelyCredentialEnvVar(name);
+}
+
 function fallbackSearchUrl(name) {
   return googleSearchUrl(name);
 }
@@ -584,6 +632,7 @@ function parseArgs(argv) {
     else if (arg === "--json") options.json = true;
     else if (arg === "--invite") options.invite = true;
     else if (arg === "--join") options.join = true;
+    else if (arg === "--all") options.all = true;
     else if (arg === "--out") options.out = argv[++i];
     else if (arg === "--recipients-file") options.recipientsFile = argv[++i];
     else if (arg === "--recipients-dir") options.recipientsDir = argv[++i];

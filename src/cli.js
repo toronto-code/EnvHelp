@@ -286,7 +286,7 @@ async function needsCommand(argv = []) {
       provider: provider?.name || null,
       providerId: provider?.id || null,
       kind,
-      link: provider ? bestProviderUrl(provider) : kind.includes("credential") ? fallbackSearchUrl(item.name) : null,
+      link: provider ? bestEnvUrl(provider, item.name) : kind.includes("credential") ? fallbackSearchUrl(item.name) : null,
       sources: item.sources
     };
   });
@@ -294,7 +294,7 @@ async function needsCommand(argv = []) {
     ...row,
     provider: row.provider && typeof row.provider === "object" ? row.provider.name : row.provider,
     providerId: row.provider && typeof row.provider === "object" ? row.provider.id : row.providerId,
-    link: row.link || (row.provider && typeof row.provider === "object" ? bestProviderUrl(row.provider) : row.link),
+    link: row.link || (row.provider && typeof row.provider === "object" ? bestEnvUrl(row.provider, row.name) : row.link),
     status: values[row.name] ? "set" : row.status || "missing"
   }));
   const needsProfile = selectLockedProfile(buildSetupProfiles(rows, decisionLock), options, decisionLock);
@@ -900,7 +900,7 @@ function printProfileLinks(profile) {
     seen.add(key);
     console.log(`${item.name}`);
     if (item.provider) {
-      const url = bestProviderUrl(item.provider);
+      const url = bestEnvUrl(item.provider, item.name);
       if (url) console.log(`  ${formatLink(`${item.provider.name} key page`, url)}`);
       if (item.provider.docsUrl) console.log(`  docs: ${formatLink("docs", item.provider.docsUrl)}`);
     } else {
@@ -916,16 +916,18 @@ function printProviderCard(item) {
   console.log("");
   if (provider) {
     console.log(`Value: ${item.name}`);
-    const keyUrl = bestProviderUrl(provider);
+    const keyUrl = bestEnvUrl(provider, item.name);
     if (keyUrl) console.log(`Where: ${formatLink("open key page", keyUrl)}`);
-    if (provider.docsUrl) console.log(`Docs: ${formatLink("open docs", provider.docsUrl)}`);
+    const docsUrl = docsEnvUrl(provider, item.name);
+    if (docsUrl) console.log(`Docs: ${formatLink("open docs", docsUrl)}`);
     console.log("Steps:");
     for (const step of providerSteps(provider, item.name)) console.log(`  ${step}`);
     if (envVarClientSafe(item.name, provider) === false && looksFrontendPublic(item.name)) {
       console.log("Warning: this looks frontend-exposed, but the provider marks it as secret.");
     }
-    if (provider.notes?.length) {
-      for (const note of provider.notes) console.log(`Note: ${note}`);
+    const notes = envNotes(provider, item.name);
+    if (notes.length) {
+      for (const note of notes) console.log(`Note: ${note}`);
     }
   } else {
     console.log("Provider: unknown");
@@ -938,29 +940,53 @@ function printProviderCard(item) {
 
 function providerSteps(provider, name) {
   const lower = provider.id?.toLowerCase();
-  if (lower === "supabase") return [
-    "1. Open the Supabase project dashboard.",
-    "2. Go to Project Settings -> API.",
-    `3. Copy the value for ${name}.`
+  const upper = name.toUpperCase();
+  if (upper.includes("WEBHOOK_SECRET")) return [
+    "1. Generate a long random string, for example with a password manager or `openssl rand -hex 32`.",
+    "2. Paste that same string into the provider's webhook Secret field.",
+    `3. Paste the same string here as ${name}.`,
+    "4. Do not use an access token for this value."
   ];
-  if (lower === "github") return [
+  if (lower === "slack" && upper.includes("SIGNING_SECRET")) return [
+    "1. Open your Slack app's Basic Information page.",
+    "2. Copy the Signing Secret, not a bot/user token.",
+    `3. Paste it here as ${name}.`,
+    "4. Use it server-side to verify Slack request signatures."
+  ];
+  if (upper.includes("SIGNING_SECRET")) return [
+    "1. Open the linked provider settings or docs.",
+    "2. Copy the signing secret for request/webhook verification.",
+    `3. Paste it here as ${name}.`,
+    "4. Do not use an API token for this value."
+  ];
+  if (lower === "github" && upper.includes("TOKEN")) return [
     "1. Create a fine-grained token for the target repo or org.",
     "2. Give it the smallest scopes this project needs.",
     "3. Copy the token once and paste it here."
   ];
-  if (lower === "jira") return [
+  if (lower === "jira" && upper.includes("TOKEN")) return [
     "1. Open Atlassian account API tokens.",
     "2. Create a token for this project.",
     "3. Pair it with your Jira email/domain in .env."
   ];
-  if (lower === "slack") return [
+  if (lower === "slack" && upper.includes("TOKEN")) return [
     "1. Open your Slack app configuration.",
-    "2. Copy the bot token or signing secret requested by this variable.",
+    "2. Copy the bot/user/app token requested by this variable.",
     "3. Keep it server-side only."
   ];
+  if (upper.endsWith("_URL") || upper.includes("_URL_")) return [
+    "1. Open the linked provider docs or project settings.",
+    `2. Copy the URL requested by ${name}.`,
+    "3. Paste only the URL value here."
+  ];
+  if (upper.includes("PUBLISHABLE") || upper.includes("PUBLIC")) return [
+    "1. Open the linked provider docs or project settings.",
+    `2. Copy the publishable/public value for ${name}.`,
+    "3. Confirm this value is intended to be public before using it in frontend code."
+  ];
   return [
-    "1. Open the key page.",
-    "2. Create or reveal the requested value.",
+    "1. Open the linked provider page or docs.",
+    `2. Create, reveal, or copy the value for ${name}.`,
     "3. Copy it once and paste it here."
   ];
 }
@@ -1155,6 +1181,40 @@ function bestProviderUrl(provider) {
   return provider?.keyUrl || provider?.docsUrl || provider?.sourceUrl || null;
 }
 
+function bestEnvUrl(provider, name) {
+  const id = provider?.id?.toLowerCase();
+  const upper = name.toUpperCase();
+  if (id === "github" && upper.includes("WEBHOOK_SECRET")) {
+    return "https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries";
+  }
+  if (id === "slack" && upper.includes("SIGNING_SECRET")) {
+    return "https://docs.slack.dev/authentication/verifying-requests-from-slack/";
+  }
+  return bestProviderUrl(provider);
+}
+
+function docsEnvUrl(provider, name) {
+  return bestEnvUrl(provider, name) || provider?.docsUrl || null;
+}
+
+function envNotes(provider, name) {
+  const id = provider?.id?.toLowerCase();
+  const upper = name.toUpperCase();
+  if (id === "github" && upper.includes("WEBHOOK_SECRET")) {
+    return ["This is not a GitHub access token. It is used only to verify webhook signatures."];
+  }
+  if (upper.includes("WEBHOOK_SECRET")) {
+    return ["This is not an access token. It is used only to verify webhook signatures."];
+  }
+  if (id === "slack" && upper.includes("SIGNING_SECRET")) {
+    return ["This is not a Slack bot token. It is used only to verify Slack request signatures."];
+  }
+  if (upper.includes("SIGNING_SECRET")) {
+    return ["This is not an API token. It is used only to verify signed requests."];
+  }
+  return provider?.notes || [];
+}
+
 function looksEnvVar(value) {
   return /^[A-Z][A-Z0-9_]*$/.test(value);
 }
@@ -1251,7 +1311,9 @@ async function prompt(question) {
   if (!process.stdin.isTTY) return readPipedLine(question);
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   try {
-    return await new Promise((resolve) => rl.question(question, resolve));
+    const answer = await new Promise((resolve) => rl.question(question, resolve));
+    console.log("");
+    return answer;
   } finally {
     rl.close();
   }
@@ -1281,7 +1343,7 @@ async function promptSecret(question) {
         process.stdin.setRawMode(false);
         process.stdin.off("data", onData);
         process.stdin.pause();
-        process.stdout.write("\n");
+        process.stdout.write("\n\n");
         resolve(value);
         return;
       }

@@ -117,6 +117,38 @@ test("cli needs uses .envhelper.lock default profile when present", async () => 
   assert.doesNotMatch(output, /STRIPE_SECRET_KEY/);
 });
 
+test("cli gives key-specific guidance for webhook and signing secrets", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "envhelper-cli-specific-"));
+  await fs.writeFile(path.join(root, ".env.example"), "GITHUB_WEBHOOK_SECRET=\nSLACK_SIGNING_SECRET=\n", "utf8");
+
+  const needs = runCli(["needs"], { cwd: root });
+  assert.match(needs, /https:\/\/docs\.github\.com\/en\/webhooks\/using-webhooks\/validating-webhook-deliveries/);
+  assert.match(needs, /https:\/\/docs\.slack\.dev\/authentication\/verifying-requests-from-slack\//);
+
+  const start = runCli(["start", "--no-validate"], { cwd: root, input: "\n\n" });
+  assert.match(start, /Do not use an access token/);
+  assert.match(start, /This is not a GitHub access token/);
+  assert.doesNotMatch(start, /smallest scopes/);
+  assert.match(start, /Copy the Signing Secret, not a bot\/user token/);
+  assert.match(start, /This is not a Slack bot token/);
+});
+
+test("cli uses conservative setup guidance for common variable types", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "envhelper-cli-guidance-"));
+  await fs.writeFile(
+    path.join(root, ".env.example"),
+    "SUPABASE_URL=\nNEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=\nGITHUB_TOKEN=\n",
+    "utf8"
+  );
+
+  const output = runCli(["start", "--no-validate"], { cwd: root, input: "\n\n\n" });
+
+  assert.match(output, /Copy the URL requested by SUPABASE_URL/);
+  assert.match(output, /Confirm this value is intended to be public/);
+  assert.match(output, /Create a fine-grained token/);
+  assert.doesNotMatch(output, /Project Settings -> API/);
+});
+
 test("cli smart share encrypts and decrypts with age when available", async () => {
   if (!hasAge()) return;
 

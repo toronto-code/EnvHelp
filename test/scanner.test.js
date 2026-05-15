@@ -127,8 +127,47 @@ test("doctor reports missing local env values without printing secrets", async (
   const result = await doctor(root, providers);
   const messages = result.checks.map((check) => check.message).join("\n");
 
-  assert.match(messages, /missing 1 detected value/);
+  assert.match(messages, /missing 1 likely setup value/);
   assert.doesNotMatch(messages, /sk-test-not-real/);
+});
+
+test("doctor does not flag env templates or docs as frontend exposure", async () => {
+  const root = await tempProject();
+  await fs.writeFile(path.join(root, ".gitignore"), ".env\n", "utf8");
+  await fs.writeFile(path.join(root, ".env.example"), "GITHUB_TOKEN=\n", "utf8");
+  await fs.writeFile(path.join(root, ".env"), "GITHUB_TOKEN=ghp-redacted\n", "utf8");
+  await fs.mkdir(path.join(root, "apps", "web", "components"), { recursive: true });
+  await fs.writeFile(
+    path.join(root, "apps", "web", "components", "Help.tsx"),
+    "export const copy = 'Set GITHUB_TOKEN in your server .env';\n",
+    "utf8"
+  );
+
+  const providers = await loadProviders();
+  const result = await doctor(root, providers);
+
+  assert.deepEqual(result.findings, []);
+  assert.equal(result.exitCode, 0);
+});
+
+test("doctor flags frontend runtime secret env reads", async () => {
+  const root = await tempProject();
+  await fs.writeFile(path.join(root, ".gitignore"), ".env\n", "utf8");
+  await fs.writeFile(path.join(root, ".env.example"), "OPENAI_API_KEY=\n", "utf8");
+  await fs.writeFile(path.join(root, ".env"), "OPENAI_API_KEY=sk-test-not-real\n", "utf8");
+  await fs.mkdir(path.join(root, "apps", "web", "components"), { recursive: true });
+  await fs.writeFile(
+    path.join(root, "apps", "web", "components", "Chat.tsx"),
+    "export const key = process.env.OPENAI_API_KEY;\n",
+    "utf8"
+  );
+
+  const providers = await loadProviders();
+  const result = await doctor(root, providers);
+  const messages = result.findings.map((finding) => finding.message).join("\n");
+
+  assert.match(messages, /referenced by frontend runtime code/);
+  assert.equal(result.exitCode, 1);
 });
 
 test("doctor does not ask for .env files when no env vars are detected", async () => {

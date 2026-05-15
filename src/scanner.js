@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { parseEnvFile } from "./envfile.js";
-import { envVarClientSafe, providerForEnvVar } from "./providers.js";
+import { envVarClientSafe, isKnownProviderEnvVar, isLikelyCredentialEnvVar, providerForEnvVar } from "./providers.js";
 
 const skipDirs = new Set([
   ".git",
@@ -158,10 +158,16 @@ export async function doctor(root, providers, options = {}) {
       checks.push({ level: "fail", message: ".env is tracked by git" });
     }
     const values = await parseEnvFile(envPath);
-    const missing = scan.envVars.filter((item) => !values[item.name]);
-    checks.push(missing.length
-      ? { level: "warn", message: `.env is missing ${missing.length} detected value(s): ${missing.map((item) => item.name).join(", ")}` }
-      : { level: "ok", message: ".env has all detected values" });
+    const missingSetup = scan.envVars.filter((item) => shouldDoctorRequire(item, providers, scan.packageNames) && !values[item.name]);
+    const hidden = scan.envVars.filter((item) => !values[item.name]).length - missingSetup.length;
+    checks.push(missingSetup.length
+      ? {
+          level: "warn",
+          message: `.env is missing ${missingSetup.length} likely setup value(s): ${summarizeNames(missingSetup.map((item) => item.name))}${hidden > 0 ? ` (${hidden} optional/default/config value(s) hidden)` : ""}`
+        }
+      : hidden > 0
+        ? { level: "ok", message: `.env has all likely setup values (${hidden} optional/default/config value(s) not set)` }
+        : { level: "ok", message: ".env has all detected values" });
   } else if (scan.envVars.length) {
     checks.push({ level: "warn", message: ".env not found; run envhelper start" });
   } else {
@@ -206,11 +212,12 @@ export async function doctor(root, providers, options = {}) {
 
   for (const env of scan.envVars) {
     const provider = providerForEnvVar(env.name, providers, scan.packageNames);
-    if (envVarClientSafe(env.name, provider) === false && env.sources.some((source) => isFrontendPath(source))) {
+    const frontendSources = env.sources.filter((source) => isFrontendPath(source));
+    if (provider && envVarClientSafe(env.name, provider) === false && frontendSources.length && env.sources.some((source) => isRuntimeSource(source))) {
       findings.push({
-        file: env.sources[0],
+        file: frontendSources[0],
         line: 1,
-        message: `${env.name} appears in frontend code but ${provider.name} marks it secret`
+        message: `${env.name} is referenced by frontend runtime code but ${provider.name} marks it secret`
       });
     }
   }
@@ -350,8 +357,42 @@ function isTextFile(file) {
 }
 
 function isFrontendPath(source) {
+  if (isTemplateOrDocsSource(source)) return false;
   return /(^|\/)(src|app|pages|components|client|public)\//.test(source) ||
     /\.(jsx|tsx|vue|svelte)$/.test(source);
+}
+
+function isRuntimeSource(source) {
+  if (isTemplateOrDocsSource(source)) return false;
+  return /\.(jsx|tsx|js|ts|mjs|cjs|vue|svelte)$/.test(source);
+}
+
+function isTemplateOrDocsSource(source) {
+  const base = path.basename(source).toLowerCase();
+  return base.startsWith(".env") ||
+    base === ".envhelper.json" ||
+    /\.(md|mdx|txt)$/.test(source);
+}
+
+function shouldDoctorRequire(item, providers, packageNames = []) {
+  const provider = providerForEnvVar(item.name, providers, packageNames);
+  const template = summarizeTemplates(item.templates || []);
+  const credentialLike = isKnownProviderEnvVar(item.name, provider) || isLikelyCredentialEnvVar(item.name);
+  if (!credentialLike) return false;
+  if (template.hasTemplate) return template.required;
+  return Boolean(provider);
+}
+
+function summarizeTemplates(templates) {
+  const hasTemplate = templates.length > 0;
+  const blankTemplates = templates.filter((template) => !template.hasDefault);
+  const required = hasTemplate && blankTemplates.length > 0 && blankTemplates.every((template) => !template.optional);
+  return { hasTemplate, required };
+}
+
+function summarizeNames(names, limit = 12) {
+  if (names.length <= limit) return names.join(", ");
+  return `${names.slice(0, limit).join(", ")}, ...and ${names.length - limit} more`;
 }
 
 function isHighEntropy(value) {

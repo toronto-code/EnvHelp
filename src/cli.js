@@ -97,16 +97,12 @@ async function start(argv = []) {
     : filterEnvRows(enriched, options);
   let setupItems = setupCandidates.filter((item) => item.status !== "set");
 
-  if (enriched.length === 0) {
-    console.log("No env vars found. Add a .env.example or reference process.env.MY_KEY in code, then run again.");
-    return;
-  }
-
-  const skipped = enriched.length - setupCandidates.length;
-  const alreadySet = setupCandidates.length - setupItems.length;
-  if (selectedProfile && process.stdin.isTTY) {
+  while (selectedProfile && process.stdin.isTTY) {
     printSetupSummary(selectedProfile, enriched);
     const action = await chooseSetupAction(selectedProfile, setupItems, options);
+    if (action === "profiles") {
+      return start(["--choose-profile", ...argv.filter((arg) => arg !== "--profile" && arg !== selectedProfile.id)]);
+    }
     if (action === "exit") {
       await maybeSaveDecisionLock(cwd, selectedProfile, profiles, decisionLock);
       return;
@@ -122,8 +118,16 @@ async function start(argv = []) {
       console.log("Saved .envhelper.lock decisions.");
       return;
     }
+    break;
   }
 
+  if (enriched.length === 0) {
+    console.log("No env vars found. Add a .env.example or reference process.env.MY_KEY in code, then run again.");
+    return;
+  }
+
+  const skipped = enriched.length - setupCandidates.length;
+  const alreadySet = setupCandidates.length - setupItems.length;
   console.log(`Found ${enriched.length} env var(s).`);
   if (!options.all && !selectedProfile) {
     const scope = options.optional ? "required/optional credential" : "required setup value";
@@ -825,7 +829,7 @@ function selectLockedProfile(profiles, options, decisionLock) {
 async function maybeChooseSetupProfile(profiles, options, decisionLock) {
   if (!profiles.length) return null;
   const locked = selectLockedProfile(profiles, options, decisionLock);
-  if (locked) return locked;
+  if (locked && !options.chooseProfile) return locked;
   if (!process.stdin.isTTY || options.optional || options.all) return null;
 
   console.log("Setup profiles:\n");
@@ -879,7 +883,8 @@ async function chooseSetupAction(profile, setupItems) {
   console.log("2. Show key links");
   console.log("3. Share current .env");
   console.log("4. Save decisions to .envhelper.lock");
-  console.log("5. Exit");
+  console.log("5. Pick a different profile");
+  console.log("6. Exit");
   const answer = await prompt(`Choose [${hasMissing ? "1" : "5"}]: `);
   const choice = answer.trim() || (hasMissing ? "1" : "5");
   return {
@@ -887,7 +892,8 @@ async function chooseSetupAction(profile, setupItems) {
     "2": "links",
     "3": "share",
     "4": "save",
-    "5": "exit"
+    "5": "profiles",
+    "6": "exit"
   }[choice] || (hasMissing ? "fill" : "exit");
 }
 
@@ -1247,6 +1253,7 @@ function parseArgs(argv) {
     else if (arg === "--unknown") options.unknown = true;
     else if (arg === "--template") options.template = true;
     else if (arg === "--interactive") options.interactive = true;
+    else if (arg === "--choose-profile") options.chooseProfile = true;
     else if (arg === "--invite") options.invite = true;
     else if (arg === "--join") options.join = true;
     else if (arg === "--all" || arg === "-all") options.all = true;

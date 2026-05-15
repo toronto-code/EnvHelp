@@ -77,17 +77,28 @@ envhelper commands   # show the command directory
 envhelper start
 ```
 
-Scan the project, guide local `.env` setup, write non-secret `.envhelper.json` metadata, and make sure `.env` is ignored.
+Scan the project, choose a setup profile, guide local `.env` setup, write non-secret `.envhelper.json` metadata, and make sure `.env` is ignored. In an interactive terminal, EnvHelper shows a one-screen summary with actions like fill values, show links, share `.env`, save decisions, or exit.
+
+Skip the profile picker when you already know the mode:
+
+```bash
+envhelper start --profile local-demo
+envhelper start --profile real-ai
+envhelper start --profile integrations
+```
+
+When you save decisions, EnvHelper writes `.envhelper.lock`, which contains env var names and setup profiles only, never values.
 
 ```bash
 envhelper needs
+envhelper needs --profile integrations
 envhelper needs --optional
 envhelper needs --all
 ```
 
 Show required credentials, whether each one is set locally, the likely provider, the source files, and the best known key link.
 
-By default, EnvHelper hides values that are already set and only shows what still needs action. Use `--show-set` to include already-set values and `--optional` to include blank known-provider credentials that are referenced outside the template. Add `--template` for optional values that only appear in `.env.example`, and `--unknown` when you also want unknown optional credentials. Use `--all` to include ordinary config values like ports, feature flags, defaults, and internal URLs. Add `--verbose` when you want source-file detail. `-optional` and `-all` are accepted as forgiving aliases.
+By default, EnvHelper hides values that are already set and only shows what still needs action. If `.envhelper.lock` exists, `needs` uses its default profile. Use `--show-set` to include already-set values and `--optional` to include blank known-provider credentials that are referenced outside the template. Add `--template` for optional values that only appear in `.env.example`, and `--unknown` when you also want unknown optional credentials. Use `--all` to include ordinary config values like ports, feature flags, defaults, and internal URLs. Add `--verbose` when you want source-file detail. `-optional` and `-all` are accepted as forgiving aliases.
 
 ```bash
 envhelper add stripe
@@ -140,7 +151,15 @@ Write the public invite code to a file that can be sent to a team lead.
 envhelper share
 ```
 
-With no recipients, explain the sharing flow and print your own invite code. With recipients, encrypt `.env` to one or more `age1...` invite codes using the `age` CLI.
+In a terminal, open a role-based sharing wizard:
+
+```txt
+1. I want to receive a shared .env
+2. I want to share my .env with teammates
+3. I received .env.team.enc and want to decrypt it
+```
+
+With no recipients in non-interactive mode, explain the sharing flow and print your own invite code. With recipients, encrypt `.env` to one or more `age1...` invite codes using the `age` CLI.
 
 ```bash
 envhelper share --recipients-dir invites

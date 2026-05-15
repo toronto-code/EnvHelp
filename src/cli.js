@@ -85,25 +85,53 @@ async function start(argv = []) {
   const scan = await scanProject(cwd, providers);
   const envPath = path.join(cwd, ".env");
   const existing = existsSync(envPath) ? await parseEnvFile(envPath) : {};
-  const enriched = enrichEnvVars(scan, providers).map((item) => ({
+  const decisionLock = await readDecisionLock(cwd);
+  const enriched = appendLocalEnvNames(enrichEnvVars(scan, providers), existing, providers, scan.packageNames).map((item) => ({
     ...item,
     status: existing[item.name] ? "set" : "missing"
   }));
-  const setupCandidates = filterEnvRows(enriched, options);
+  const profiles = buildSetupProfiles(enriched, decisionLock);
+  const selectedProfile = await maybeChooseSetupProfile(profiles, options, decisionLock);
+  const setupCandidates = selectedProfile
+    ? selectedProfile.items
+    : filterEnvRows(enriched, options);
   let setupItems = setupCandidates.filter((item) => item.status !== "set");
 
-  if (scan.envVars.length === 0) {
+  if (enriched.length === 0) {
     console.log("No env vars found. Add a .env.example or reference process.env.MY_KEY in code, then run again.");
     return;
   }
 
   const skipped = enriched.length - setupCandidates.length;
   const alreadySet = setupCandidates.length - setupItems.length;
+  if (selectedProfile && process.stdin.isTTY) {
+    printSetupSummary(selectedProfile, enriched);
+    const action = await chooseSetupAction(selectedProfile, setupItems, options);
+    if (action === "exit") {
+      await maybeSaveDecisionLock(cwd, selectedProfile, profiles, decisionLock);
+      return;
+    }
+    if (action === "links") {
+      printProfileLinks(selectedProfile);
+      await maybeSaveDecisionLock(cwd, selectedProfile, profiles, decisionLock);
+      return;
+    }
+    if (action === "share") return share([]);
+    if (action === "save") {
+      await writeDecisionLock(cwd, selectedProfile, profiles);
+      console.log("Saved .envhelper.lock decisions.");
+      return;
+    }
+  }
+
   console.log(`Found ${enriched.length} env var(s).`);
-  if (!options.all) {
+  if (!options.all && !selectedProfile) {
     const scope = options.optional ? "required/optional credential" : "required setup value";
     console.log(`Missing ${setupItems.length} ${scope}(s); ${alreadySet} already set.`);
     if (skipped > 0) console.log(`Skipping ${skipped} optional/default/config value(s).`);
+  } else if (selectedProfile) {
+    console.log(`Using profile: ${selectedProfile.name}`);
+    console.log(`Missing ${setupItems.length} value(s); ${alreadySet} already set.`);
   }
 
   if (setupItems.length) {
@@ -131,7 +159,7 @@ async function start(argv = []) {
       isTemplateOnly(item)
     ).length;
     console.log("Nothing missing in the current setup scope.");
-    if (!options.optional && !options.all && optionalMissing.length && process.stdin.isTTY) {
+    if (!selectedProfile && !options.optional && !options.all && optionalMissing.length && process.stdin.isTTY) {
       printOptionalPreview(enriched, options, "start");
       const fillOptional = await promptYesNo("Fill optional credentials now? ");
       if (fillOptional) {
@@ -170,23 +198,7 @@ async function start(argv = []) {
   for (const item of setupItems) {
     if (existing[item.name]) continue;
     const provider = item.provider;
-    console.log("");
-    console.log(item.name);
-    if (provider) {
-      console.log(`Provider: ${provider.name}`);
-      const keyUrl = bestProviderUrl(provider);
-      if (keyUrl) console.log(`Create/find key: ${formatLink("open key page", keyUrl)}`);
-      if (provider.docsUrl) console.log(`Docs: ${formatLink("open docs", provider.docsUrl)}`);
-      if (envVarClientSafe(item.name, provider) === false && looksFrontendPublic(item.name)) {
-        console.log("Warning: this looks frontend-exposed, but the provider marks it as secret.");
-      }
-      if (provider.notes?.length) {
-        for (const note of provider.notes) console.log(`Note: ${note}`);
-      }
-    } else {
-      console.log(`Provider: unknown`);
-      console.log(`Search: ${formatLink("Google search", fallbackSearchUrl(item.name))}`);
-    }
+    printProviderCard(item);
 
     const value = await promptSecret(`Paste value for ${item.name}, or leave blank to skip: `);
     if (value.trim()) {
@@ -207,6 +219,7 @@ async function start(argv = []) {
   }
 
   await writeMetadata(cwd, scan, providers);
+  if (selectedProfile && process.stdin.isTTY) await maybeSaveDecisionLock(cwd, selectedProfile, profiles, decisionLock);
   console.log("\nNext: run `envhelper doctor` to check for leaks, or `envhelper share` to encrypt for teammates.");
 }
 
@@ -234,16 +247,7 @@ async function add(argv = []) {
 
   for (const name of names) {
     const resolvedProvider = providerForEnvVar(name, providers, scan.packageNames) || provider;
-    console.log("");
-    console.log(name);
-    if (resolvedProvider) {
-      console.log(`Provider: ${resolvedProvider.name}`);
-      const keyUrl = bestProviderUrl(resolvedProvider);
-      if (keyUrl) console.log(`Create/find key: ${formatLink("open key page", keyUrl)}`);
-      if (resolvedProvider.docsUrl) console.log(`Docs: ${formatLink("open docs", resolvedProvider.docsUrl)}`);
-    } else {
-      console.log(`Search: ${formatLink("Google search", fallbackSearchUrl(name))}`);
-    }
+    printProviderCard({ name, provider: resolvedProvider });
     const value = await promptSecret(`Paste value for ${name}, or leave blank to skip: `);
     if (!value.trim()) continue;
     const trimmed = value.trim();
@@ -271,7 +275,8 @@ async function needsCommand(argv = []) {
   const scan = await scanProject(cwd, providers);
   const envPath = path.join(cwd, ".env");
   const values = existsSync(envPath) ? await parseEnvFile(envPath) : {};
-  const rows = scan.envVars.map((item) => {
+  const decisionLock = await readDecisionLock(cwd);
+  const detectedRows = scan.envVars.map((item) => {
     const provider = providerForEnvVar(item.name, providers, scan.packageNames);
     const template = summarizeTemplates(item.templates || []);
     const kind = classifyEnvVar(item.name, provider, template);
@@ -285,7 +290,18 @@ async function needsCommand(argv = []) {
       sources: item.sources
     };
   });
-  const visibleRows = filterEnvRows(rows, options);
+  const rows = appendLocalEnvNames(detectedRows, values, providers, scan.packageNames).map((row) => ({
+    ...row,
+    provider: row.provider && typeof row.provider === "object" ? row.provider.name : row.provider,
+    providerId: row.provider && typeof row.provider === "object" ? row.provider.id : row.providerId,
+    link: row.link || (row.provider && typeof row.provider === "object" ? bestProviderUrl(row.provider) : row.link),
+    status: values[row.name] ? "set" : row.status || "missing"
+  }));
+  const needsProfile = selectLockedProfile(buildSetupProfiles(rows, decisionLock), options, decisionLock);
+  if (needsProfile && !options.optional && !options.all) options.profileName = needsProfile.name;
+  const visibleRows = needsProfile && !options.optional && !options.all
+    ? needsProfile.items
+    : filterEnvRows(rows, options);
   const missingRows = visibleRows.filter((row) => row.status !== "set");
   const setRows = visibleRows.filter((row) => row.status === "set");
   const displayRows = options.showSet ? visibleRows : missingRows;
@@ -312,7 +328,7 @@ async function needsCommand(argv = []) {
   }
 
   const hidden = rows.length - visibleRows.length;
-  console.log(needsHeading(options, displayRows.length, setRows.length));
+  console.log(needsHeading(options, missingRows.length, setRows.length));
   for (const row of displayRows) {
     printNeedsRow(row, options);
   }
@@ -438,6 +454,9 @@ async function share(argv = []) {
   const options = parseArgs(argv);
   if (options.invite || options.out) return invite(argv);
   if (options.join) return join();
+  if (process.stdin.isTTY && !hasExplicitRecipients(argv) && !options.interactive) {
+    return shareWizard(argv);
+  }
 
   const envPath = path.join(cwd, ".env");
   const bundlePath = path.join(cwd, ".env.team.enc");
@@ -460,6 +479,38 @@ async function share(argv = []) {
   await encryptBundle({ inputPath: envPath, outputPath: outPath, recipients });
   console.log(`Created ${path.basename(outPath)} encrypted for ${recipients.length} recipient(s).`);
   console.log("Safe to share as ciphertext. Rotate upstream keys if a recipient should lose access later.");
+}
+
+async function shareWizard(argv = []) {
+  console.log("EnvHelper Share\n");
+  console.log("What are you doing?\n");
+  console.log("1. I want to receive a shared .env");
+  console.log("2. I want to share my .env with teammates");
+  console.log("3. I received .env.team.enc and want to decrypt it");
+  const answer = await prompt("\nChoose [1]: ");
+  const choice = answer.trim() || "1";
+  if (choice === "1") return invite(argv);
+  if (choice === "3") return join();
+  if (choice !== "2") return invite(argv);
+
+  const envPath = path.join(cwd, ".env");
+  if (!existsSync(envPath)) {
+    console.error("No .env file found. Run `envhelper start` first.");
+    process.exitCode = 1;
+    return;
+  }
+  console.log("\nTo share, each teammate first runs:");
+  console.log("  envhelper invite");
+  console.log("\nThey send you the age1... public invite code. Paste those below.");
+  const recipients = await collectRecipients(argv, { interactive: true });
+  if (!recipients.length) {
+    console.log("No recipients entered. Nothing encrypted.");
+    return;
+  }
+  const outPath = path.join(cwd, ".env.team.enc");
+  await encryptBundle({ inputPath: envPath, outputPath: outPath, recipients });
+  console.log(`Created ${path.basename(outPath)} encrypted for ${recipients.length} recipient(s).`);
+  console.log("Send .env.team.enc to teammates, or commit it if that is acceptable for your repo.");
 }
 
 async function join() {
@@ -518,6 +569,8 @@ function commandsCommand() {
   envhelper commands    Show this command directory
 
 Useful extras:
+  envhelper start --profile real-ai
+  envhelper needs --profile integrations
   envhelper add <provider-or-env-var>
   envhelper providers
   envhelper validate
@@ -541,11 +594,11 @@ function help() {
 
 function commandHelp(name) {
   const text = {
-    start: "Usage: envhelper start [--optional|--all] [--unknown] [--template] [--validate|--no-validate]\n\nScan the repo and guide setup for required credentials. Use --optional for optional known-provider credentials that are referenced outside the template, --template for template-only optional credentials, --unknown to include unknown optional credentials, or --all for every variable.",
+    start: "Usage: envhelper start [--profile local-demo|real-ai|integrations] [--optional|--all] [--unknown] [--template] [--validate|--no-validate]\n\nScan the repo and guide setup for required credentials. In a terminal, EnvHelper offers setup profiles and an action summary. Use --profile to skip profile selection, --optional for optional known-provider credentials that are referenced outside the template, --template for template-only optional credentials, --unknown to include unknown optional credentials, or --all for every variable.",
     init: "Usage: envhelper init [--optional|--all] [--validate|--no-validate]\n\nAlias for start.",
     setup: "Usage: envhelper setup [--optional|--all] [--validate|--no-validate]\n\nAlias for start.",
-    needs: "Usage: envhelper needs [--optional|--all] [--unknown] [--template] [--show-set] [--verbose] [--json]\n\nShow missing required credentials and where to get them. Use --optional for optional known-provider credentials referenced outside the template, --template for template-only optional credentials, --unknown to include unknown optional credentials, --all for config values too, --show-set to include values already present in .env, or --verbose to show source files.",
-    scan: "Usage: envhelper scan [--optional|--all] [--unknown] [--template] [--show-set] [--verbose] [--json]\n\nAlias for needs.",
+    needs: "Usage: envhelper needs [--profile local-demo|real-ai|integrations] [--optional|--all] [--unknown] [--template] [--show-set] [--verbose] [--json]\n\nShow missing credentials and where to get them. If .envhelper.lock exists, EnvHelper uses its default profile. Use --profile to inspect another profile, --optional for optional known-provider credentials referenced outside the template, --template for template-only optional credentials, --unknown to include unknown optional credentials, --all for config values too, --show-set to include values already present in .env, or --verbose to show source files.",
+    scan: "Usage: envhelper scan [--profile local-demo|real-ai|integrations] [--optional|--all] [--unknown] [--template] [--show-set] [--verbose] [--json]\n\nAlias for needs.",
     add: "Usage: envhelper add <provider-or-env-var> [--validate|--no-validate]\n\nAdd a provider or single env var to .env and .env.example.",
     link: "Usage: envhelper link <provider-or-env-var> [--copy] [--open]\n\nPrint, copy, or open a source-backed provider link. Unknown providers use Google search.",
     links: "Usage: envhelper links <provider-or-env-var> [--copy] [--open]\n\nAlias for link.",
@@ -581,6 +634,15 @@ async function printShareNextStep(argv = []) {
   console.log("\nIf someone else is sharing with you, send them your invite code:");
   console.log("");
   await invite(argv);
+}
+
+function hasExplicitRecipients(argv) {
+  return argv.some((arg) =>
+    arg === "--recipient" ||
+    arg === "-r" ||
+    arg === "--recipients-file" ||
+    arg === "--recipients-dir"
+  ) || existsSync(path.join(cwd, "invites"));
 }
 
 async function collectRecipients(argv, options = {}) {
@@ -663,6 +725,319 @@ function looksFrontendPublic(name) {
   return name.startsWith("NEXT_PUBLIC_") || name.startsWith("VITE_") || name.startsWith("PUBLIC_");
 }
 
+async function readDecisionLock(root) {
+  try {
+    const lock = JSON.parse(await fs.readFile(path.join(root, ".envhelper.lock"), "utf8"));
+    return lock?.generatedBy === "envhelper" ? lock : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeDecisionLock(root, profile, profiles) {
+  const lock = {
+    version: 1,
+    generatedBy: "envhelper",
+    defaultProfile: profile.id,
+    profiles: Object.fromEntries(profiles.map((entry) => [
+      entry.id,
+      {
+        name: entry.name,
+        description: entry.description,
+        env: entry.items.map((item) => item.name).sort()
+      }
+    ]))
+  };
+  await fs.writeFile(path.join(root, ".envhelper.lock"), `${JSON.stringify(lock, null, 2)}\n`, "utf8");
+}
+
+async function maybeSaveDecisionLock(root, profile, profiles, existingLock) {
+  if (existingLock || !process.stdin.isTTY) return;
+  const ok = await promptYesNo("Save these setup decisions to .envhelper.lock? ", true);
+  if (!ok) return;
+  await writeDecisionLock(root, profile, profiles);
+  console.log("Saved .envhelper.lock decisions.");
+}
+
+function buildSetupProfiles(rows, decisionLock) {
+  if (decisionLock?.profiles) {
+    const locked = Object.entries(decisionLock.profiles)
+      .map(([id, profile]) => ({
+        id,
+        name: profile.name || id,
+        description: profile.description || "Saved project setup profile",
+        items: rows.filter((row) => (profile.env || []).includes(row.name))
+      }))
+      .filter((profile) => profile.items.length);
+    if (locked.length) return locked;
+  }
+
+  const required = rows.filter((row) => row.kind === "required credential");
+  const knownCredentials = rows.filter((row) => row.kind.includes("credential") && row.provider);
+  const realAi = uniqueRows([
+    ...required,
+    ...knownCredentials.filter((row) => isAiCredential(row))
+  ]);
+  const integrations = uniqueRows([
+    ...required,
+    ...knownCredentials.filter((row) => isIntegrationCredential(row))
+  ]);
+  const knownOptional = uniqueRows([
+    ...required,
+    ...knownCredentials.filter((row) => row.kind === "optional credential" && !isTemplateOnly(row))
+  ]);
+
+  return [
+    {
+      id: "local-demo",
+      name: "Local demo",
+      description: "Required values only. Best for getting the app running locally.",
+      items: required
+    },
+    {
+      id: "real-ai",
+      name: "Real AI mode",
+      description: "Required values plus AI provider keys such as OpenAI or Anthropic.",
+      items: realAi
+    },
+    {
+      id: "integrations",
+      name: "Integrations mode",
+      description: "Required values plus GitHub, Jira, Slack, and similar integration keys.",
+      items: integrations
+    },
+    {
+      id: "known-optional",
+      name: "Known optional keys",
+      description: "Required values plus optional known-provider keys referenced by the repo.",
+      items: knownOptional
+    }
+  ].filter((profile) => profile.items.length);
+}
+
+function selectLockedProfile(profiles, options, decisionLock) {
+  if (!profiles.length) return null;
+  if (options.profile) return profiles.find((profile) => profile.id === options.profile) || null;
+  if (decisionLock?.defaultProfile) return profiles.find((profile) => profile.id === decisionLock.defaultProfile) || null;
+  return null;
+}
+
+async function maybeChooseSetupProfile(profiles, options, decisionLock) {
+  if (!profiles.length) return null;
+  const locked = selectLockedProfile(profiles, options, decisionLock);
+  if (locked) return locked;
+  if (!process.stdin.isTTY || options.optional || options.all) return null;
+
+  console.log("Setup profiles:\n");
+  profiles.forEach((profile, index) => {
+    const missing = profile.items.filter((item) => item.status !== "set").length;
+    const set = profile.items.length - missing;
+    console.log(`${index + 1}. ${profile.name}`);
+    console.log(`   ${profile.description}`);
+    console.log(`   ${missing} missing, ${set} set`);
+  });
+  const answer = await prompt("\nChoose setup profile [1]: ");
+  const index = Number(answer.trim() || "1") - 1;
+  return profiles[index] || profiles[0];
+}
+
+function printSetupSummary(profile, allRows) {
+  console.log("\nEnvHelper setup\n");
+  console.log(`Profile: ${profile.name}`);
+  console.log(profile.description);
+  console.log("");
+
+  const grouped = groupRowsByProvider(profile.items);
+  for (const group of grouped) {
+    const total = group.items.length;
+    const set = group.items.filter((item) => item.status === "set").length;
+    const mark = set === total ? "✓" : "!";
+    console.log(`${mark} ${group.name}: ${set}/${total} set`);
+    for (const item of group.items.filter((row) => row.status !== "set").slice(0, 4)) {
+      console.log(`  ! ${item.name}`);
+    }
+  }
+
+  const otherKnown = allRows.filter((row) =>
+    row.kind === "optional credential" &&
+    row.status !== "set" &&
+    row.provider &&
+    !profile.items.some((item) => item.name === row.name)
+  );
+  if (otherKnown.length) {
+    console.log("\nOther optional known-provider keys:");
+    for (const item of otherKnown.slice(0, 5)) console.log(`- ${item.name} (${providerLabel(item)})`);
+    if (otherKnown.length > 5) console.log(`- ...and ${otherKnown.length - 5} more`);
+  }
+  console.log("");
+}
+
+async function chooseSetupAction(profile, setupItems) {
+  const hasMissing = setupItems.length > 0;
+  console.log("What do you want to do?");
+  console.log(`1. ${hasMissing ? "Fill missing values" : "Check setup status"}`);
+  console.log("2. Show key links");
+  console.log("3. Share current .env");
+  console.log("4. Save decisions to .envhelper.lock");
+  console.log("5. Exit");
+  const answer = await prompt(`Choose [${hasMissing ? "1" : "5"}]: `);
+  const choice = answer.trim() || (hasMissing ? "1" : "5");
+  return {
+    "1": hasMissing ? "fill" : "exit",
+    "2": "links",
+    "3": "share",
+    "4": "save",
+    "5": "exit"
+  }[choice] || (hasMissing ? "fill" : "exit");
+}
+
+function printProfileLinks(profile) {
+  console.log(`\nLinks for ${profile.name}:\n`);
+  const seen = new Set();
+  for (const item of profile.items) {
+    const key = `${item.name}:${providerLabel(item)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    console.log(`${item.name}`);
+    if (item.provider) {
+      const url = bestProviderUrl(item.provider);
+      if (url) console.log(`  ${formatLink(`${item.provider.name} key page`, url)}`);
+      if (item.provider.docsUrl) console.log(`  docs: ${formatLink("docs", item.provider.docsUrl)}`);
+    } else {
+      console.log(`  ${formatLink("Google search", fallbackSearchUrl(item.name))}`);
+    }
+  }
+}
+
+function printProviderCard(item) {
+  const provider = item.provider;
+  console.log("");
+  console.log(provider ? `${provider.name} setup` : `${item.name} setup`);
+  console.log("");
+  if (provider) {
+    console.log(`Value: ${item.name}`);
+    const keyUrl = bestProviderUrl(provider);
+    if (keyUrl) console.log(`Where: ${formatLink("open key page", keyUrl)}`);
+    if (provider.docsUrl) console.log(`Docs: ${formatLink("open docs", provider.docsUrl)}`);
+    console.log("Steps:");
+    for (const step of providerSteps(provider, item.name)) console.log(`  ${step}`);
+    if (envVarClientSafe(item.name, provider) === false && looksFrontendPublic(item.name)) {
+      console.log("Warning: this looks frontend-exposed, but the provider marks it as secret.");
+    }
+    if (provider.notes?.length) {
+      for (const note of provider.notes) console.log(`Note: ${note}`);
+    }
+  } else {
+    console.log("Provider: unknown");
+    console.log(`Search: ${formatLink("Google search", fallbackSearchUrl(item.name))}`);
+    console.log("Steps:");
+    console.log("  1. Use the search link to find the provider docs.");
+    console.log("  2. Paste the value locally, or leave blank if this project mode does not need it.");
+  }
+}
+
+function providerSteps(provider, name) {
+  const lower = provider.id?.toLowerCase();
+  if (lower === "supabase") return [
+    "1. Open the Supabase project dashboard.",
+    "2. Go to Project Settings -> API.",
+    `3. Copy the value for ${name}.`
+  ];
+  if (lower === "github") return [
+    "1. Create a fine-grained token for the target repo or org.",
+    "2. Give it the smallest scopes this project needs.",
+    "3. Copy the token once and paste it here."
+  ];
+  if (lower === "jira") return [
+    "1. Open Atlassian account API tokens.",
+    "2. Create a token for this project.",
+    "3. Pair it with your Jira email/domain in .env."
+  ];
+  if (lower === "slack") return [
+    "1. Open your Slack app configuration.",
+    "2. Copy the bot token or signing secret requested by this variable.",
+    "3. Keep it server-side only."
+  ];
+  return [
+    "1. Open the key page.",
+    "2. Create or reveal the requested value.",
+    "3. Copy it once and paste it here."
+  ];
+}
+
+function groupRowsByProvider(rows) {
+  const groups = new Map();
+  for (const row of rows) {
+    const key = providerLabel(row);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  }
+  return [...groups.entries()]
+    .map(([name, items]) => ({ name, items }))
+    .sort((left, right) =>
+      (left.name.toLowerCase().startsWith("unknown") ? 1 : 0) -
+      (right.name.toLowerCase().startsWith("unknown") ? 1 : 0) ||
+      left.name.localeCompare(right.name)
+    );
+}
+
+function uniqueRows(rows) {
+  const seen = new Set();
+  return rows.filter((row) => {
+    if (seen.has(row.name)) return false;
+    seen.add(row.name);
+    return true;
+  });
+}
+
+function isAiCredential(row) {
+  const provider = providerLabel(row).toLowerCase();
+  return [
+    "openai",
+    "anthropic",
+    "groq",
+    "mistral",
+    "cohere",
+    "replicate",
+    "pinecone"
+  ].some((name) => provider.includes(name)) || /(?:LLM|AI|EMBEDDING|MODEL)/.test(row.name);
+}
+
+function isIntegrationCredential(row) {
+  const provider = providerLabel(row).toLowerCase();
+  return [
+    "github",
+    "jira",
+    "slack",
+    "discord",
+    "linear",
+    "notion",
+    "airtable",
+    "twilio"
+  ].some((name) => provider.includes(name));
+}
+
+function appendLocalEnvNames(rows, values, providers, packageNames = []) {
+  const seen = new Set(rows.map((row) => row.name));
+  const additions = [];
+  for (const name of Object.keys(values || {})) {
+    if (seen.has(name)) continue;
+    const provider = providerForEnvVar(name, providers, packageNames);
+    const template = summarizeTemplates([]);
+    const kind = classifyEnvVar(name, provider, template);
+    additions.push({
+      name,
+      sources: [".env"],
+      provider,
+      template,
+      kind,
+      actionable: false,
+      status: "set"
+    });
+  }
+  return [...rows, ...additions].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 function enrichEnvVars(scan, providers) {
   return scan.envVars.map((item) => {
     const provider = providerForEnvVar(item.name, providers, scan.packageNames);
@@ -720,7 +1095,9 @@ function printOptionalPreview(rows, options, command) {
 }
 
 function needsHeading(options, missingCount, setCount) {
-  const scope = options.all ? "all categories" : options.optional ? "required/optional credentials" : "required setup values";
+  const scope = options.profileName
+    ? `${options.profileName} profile values`
+    : options.all ? "all categories" : options.optional ? "required/optional credentials" : "required setup values";
   if (missingCount) return `Missing ${scope}:`;
   if (options.showSet) return `No missing ${scope}. Showing ${setCount} already set value(s):`;
   return `No missing ${scope}.`;
@@ -734,7 +1111,7 @@ function needsFlagHint(options) {
 
 function printNeedsRow(row, options) {
   const mark = row.status === "set" ? "✓" : "!";
-  const provider = row.provider || "unknown";
+  const provider = providerLabel(row);
   const detail = options.all || options.optional ? `${row.kind}, ${provider}` : provider;
   console.log(`${mark} ${row.name} (${detail})`);
   if (row.link) console.log(`  ${formatLink(row.provider ? "open key page" : "Google search", row.link)}`);
@@ -815,6 +1192,7 @@ function parseArgs(argv) {
     else if (arg === "--all" || arg === "-all") options.all = true;
     else if (arg === "--optional" || arg === "-optional") options.optional = true;
     else if (arg === "--out") options.out = argv[++i];
+    else if (arg === "--profile") options.profile = argv[++i];
     else if (arg === "--recipients-file") options.recipientsFile = argv[++i];
     else if (arg === "--recipients-dir") options.recipientsDir = argv[++i];
     else options._.push(arg);
@@ -921,9 +1299,11 @@ async function promptSecret(question) {
   });
 }
 
-async function promptYesNo(question) {
-  const answer = await prompt(`${question}[y/N] `);
-  return answer.trim().toLowerCase() === "y" || answer.trim().toLowerCase() === "yes";
+async function promptYesNo(question, defaultYes = false) {
+  const answer = await prompt(`${question}${defaultYes ? "[Y/n]" : "[y/N]"} `);
+  const normalized = answer.trim().toLowerCase();
+  if (!normalized) return defaultYes;
+  return normalized === "y" || normalized === "yes";
 }
 
 function printAgeInstall() {

@@ -40,16 +40,19 @@ test("cli needs reports missing and set env vars", async () => {
   );
   await fs.mkdir(path.join(root, "src"));
   await fs.writeFile(path.join(root, "src", "app.js"), "process.env.OPENAI_API_KEY;\n", "utf8");
-  await fs.writeFile(path.join(root, ".env"), "SUPABASE_URL=https://demo.supabase.co\n", "utf8");
+  await fs.writeFile(path.join(root, ".env"), "SUPABASE_URL=https://demo.supabase.co\nSLACK_TOKEN=xoxb-redacted\n", "utf8");
 
   const output = runCli(["needs"], { cwd: root });
   assert.match(output, /STRIPE_SECRET_KEY \(Stripe\)/);
-  assert.match(output, /Already set: 1 hidden/);
+  assert.match(output, /Already set: 2 hidden/);
+  assert.doesNotMatch(output, /xoxb-redacted/);
   assert.doesNotMatch(output, /SUPABASE_URL - set/);
   assert.doesNotMatch(output, /API_URL - missing/);
 
   const showSet = runCli(["needs", "--show-set"], { cwd: root });
   assert.match(showSet, /SUPABASE_URL \(Supabase\)/);
+  assert.match(showSet, /SLACK_TOKEN \(Slack\)/);
+  assert.doesNotMatch(showSet, /xoxb-redacted/);
 
   const json = JSON.parse(runCli(["needs", "--json"], { cwd: root }));
   assert.equal(json.find((row) => row.name === "SUPABASE_URL").status, "set");
@@ -62,14 +65,14 @@ test("cli needs reports missing and set env vars", async () => {
   assert.doesNotMatch(optional, /ACME_API_KEY/);
 
   const optionalUnknown = runCli(["needs", "--optional", "--unknown", "--template"], { cwd: root });
-  assert.match(optionalUnknown, /ACME_API_KEY \(optional credential, unknown\)/);
+  assert.match(optionalUnknown, /ACME_API_KEY \(optional credential, Unknown provider\)/);
 
   const all = runCli(["needs", "--all"], { cwd: root });
-  assert.match(all, /API_URL \(config, unknown\)/);
-  assert.match(all, /OPENAI_DEFAULT_MODEL \(config, unknown\)/);
+  assert.match(all, /API_URL \(config, Unknown provider\)/);
+  assert.match(all, /OPENAI_DEFAULT_MODEL \(config, Unknown provider\)/);
 
   const allAlias = runCli(["needs", "-all"], { cwd: root });
-  assert.match(allAlias, /API_URL \(config, unknown\)/);
+  assert.match(allAlias, /API_URL \(config, Unknown provider\)/);
 });
 
 test("cli start can consume multiple piped prompt answers", async () => {
@@ -86,6 +89,32 @@ test("cli start can consume multiple piped prompt answers", async () => {
   assert.match(env, /SUPABASE_URL=https:\/\/demo\.supabase\.co/);
   assert.match(env, /UNKNOWN_VENDOR_TOKEN=unknown-secret-value/);
   assert.doesNotMatch(env, /API_URL=/);
+});
+
+test("cli needs uses .envhelper.lock default profile when present", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "envhelper-cli-lock-"));
+  await fs.writeFile(path.join(root, ".env.example"), "OPENAI_API_KEY=\nSTRIPE_SECRET_KEY=\n", "utf8");
+  await fs.writeFile(
+    path.join(root, ".envhelper.lock"),
+    JSON.stringify({
+      version: 1,
+      generatedBy: "envhelper",
+      defaultProfile: "real-ai",
+      profiles: {
+        "real-ai": {
+          name: "Real AI mode",
+          description: "AI keys only",
+          env: ["OPENAI_API_KEY"]
+        }
+      }
+    }),
+    "utf8"
+  );
+
+  const output = runCli(["needs"], { cwd: root });
+
+  assert.match(output, /OPENAI_API_KEY \(OpenAI\)/);
+  assert.doesNotMatch(output, /STRIPE_SECRET_KEY/);
 });
 
 test("cli smart share encrypts and decrypts with age when available", async () => {

@@ -34,12 +34,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/toronto-code/EnvHelp.git"
+    "url": "git+https://github.com/toronto-code/EnvHelper.git"
   },
   "bugs": {
-    "url": "https://github.com/toronto-code/EnvHelp/issues"
+    "url": "https://github.com/toronto-code/EnvHelper/issues"
   },
-  "homepage": "https://github.com/toronto-code/EnvHelp#readme",
+  "homepage": "https://github.com/toronto-code/EnvHelper#readme",
   "engines": {
     "node": ">=18"
   },

@@ -68,8 +68,8 @@ What do you want to do?
 From this repo:
 
 ```bash
-git clone https://github.com/toronto-code/EnvHelp.git
-cd EnvHelp
+git clone https://github.com/toronto-code/EnvHelper.git
+cd EnvHelper
 npm link
 ```
 
